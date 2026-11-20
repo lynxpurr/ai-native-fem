@@ -1,0 +1,11 @@
+ANF classical research models
+
+Mathematical references are identified in docs/methods.md. No source code,
+figures, benchmark files or publication text from those references is bundled.
+
+NumPy is a separately installed runtime dependency, with BSD-3-Clause and
+additional bundled-component licenses in its own distributions:
+https://numpy.org/doc/stable/license.html
+
+This package does not redistribute a NumPy binary. If distributing a complete
+environment, retain the applicable license files for that environment.

@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-native-fem"
+version = "0.1.0a1"
+description = "Small classical beam and plate finite element research models"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE", "NOTICE"]
+dependencies = ["numpy>=2,<3"]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<10"]
+
+[project.urls]
+Repository = "https://github.com/lynxpurr/ai-native-fem"
+
+[tool.setuptools.packages.find]
+include = ["anf"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
