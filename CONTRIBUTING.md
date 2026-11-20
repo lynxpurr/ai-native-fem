@@ -25,3 +25,15 @@ Do not replace an analytical reference with results of the code being tested.
 
 `main` is the release branch. Protected branches are updated through pull
 requests. A promotion to `main` does not create a release or a version tag.
+
+To start a feature from the current integration branch:
+
+```bash
+git fetch origin
+git switch --no-track -c feature/my-change origin/develop
+git push -u origin feature/my-change
+```
+
+Select `develop` as the base when opening the feature pull request. If
+`branch-source` reports the wrong base, edit the pull request's base branch
+and wait for the checks on the updated comparison.
