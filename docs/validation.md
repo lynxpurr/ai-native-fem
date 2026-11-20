@@ -31,6 +31,9 @@ plate row exposes severe shear locking. It is a negative result, not an
 acceptable engineering accuracy claim. No numerical stabilization, fitted
 coefficient or reference-output substitution is used to conceal it.
 
+The [verification API](verification.md) reports the 16 × 16 thick case and
+the thin locking case with their observable, reference and error.
+
 Uniform-pressure rectangles and one-plane cantilever bending are the only
 tested application families. The tests do not certify arbitrary inputs or
 engineering use. Dense assembly also restricts model size.
