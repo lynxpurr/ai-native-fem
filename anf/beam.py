@@ -5,7 +5,7 @@ and slope at each node are the two DOFs; this module models one bending plane.
 """
 from dataclasses import dataclass
 import numpy as np
-from ._linear import count, eliminate, finite, positive
+from ._linear import checked_arithmetic, count, eliminate, finite, positive, strain_energy
 
 
 @dataclass(frozen=True)
@@ -16,10 +16,10 @@ class Beam:
     elements: int = 8
 
     def __post_init__(self):
-        positive(self.length, "length")
-        positive(self.young_modulus, "young_modulus")
-        positive(self.second_moment, "second_moment")
-        if count(self.elements, "elements") > 200:
+        for name in ("length", "young_modulus", "second_moment"):
+            object.__setattr__(self, name, positive(getattr(self, name), name))
+        object.__setattr__(self, "elements", count(self.elements, "elements"))
+        if self.elements > 200:
             raise ValueError("this dense research model supports at most 200 elements")
 
 
@@ -33,6 +33,7 @@ class BeamResult:
     relative_residual: float
 
 
+@checked_arithmetic
 def beam_element(length, bending_rigidity):
     """Return a 4x4 stiffness and unit uniform-load vector.
 
@@ -56,6 +57,7 @@ def beam_element(length, bending_rigidity):
     return stiffness, unit_load
 
 
+@checked_arithmetic
 def solve_cantilever(model: Beam, *, tip_force=0.0, uniform_load=0.0):
     """Constant-section cantilever; positive loads produce positive deflection."""
     if not isinstance(model, Beam):
@@ -75,4 +77,4 @@ def solve_cantilever(model: Beam, *, tip_force=0.0, uniform_load=0.0):
     displacement, reactions, residual = eliminate(stiffness, force, [0, 1])
     return BeamResult(np.linspace(0.0, model.length, model.elements+1),
                       displacement[::2], displacement[1::2], reactions[:2],
-                      float(displacement @ stiffness @ displacement / 2), residual)
+                      strain_energy(stiffness, displacement), residual)
