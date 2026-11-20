@@ -31,6 +31,9 @@ result = solve_cantilever(model, tip_force=1000)
 print(result.deflection[-1])  # analytical value: 0.0126984127 m
 ```
 
+Use [verification reports](docs/verification.md) to compare a solve with a
+registered reference and inspect its error, tolerance and input fingerprint.
+
 Use consistent SI units. The beam API models one bending plane; it does not
 include axial or torsional deformation. The plate supports uniform pressure,
 with clamped or hard simply supported edges. The [validation record](docs/validation.md)
