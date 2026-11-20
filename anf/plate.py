@@ -6,7 +6,7 @@ grad(w)-beta. This deliberately simple element is subject to shear locking.
 """
 from dataclasses import dataclass
 import numpy as np
-from ._linear import count, eliminate, finite, positive
+from ._linear import checked_arithmetic, count, eliminate, finite, positive, strain_energy
 
 
 @dataclass(frozen=True)
@@ -23,14 +23,16 @@ class Plate:
 
     def __post_init__(self):
         for name in ("lx", "ly", "thickness", "young_modulus", "shear_factor"):
-            positive(getattr(self, name), name)
+            object.__setattr__(self, name, positive(getattr(self, name), name))
         nu = finite(self.poisson_ratio, "poisson_ratio")
+        object.__setattr__(self, "poisson_ratio", nu)
         if not -1.0 < nu < 0.5:
             raise ValueError("poisson_ratio must be between -1 and 0.5")
-        count(self.nx, "nx", 2); count(self.ny, "ny", 2)
+        object.__setattr__(self, "nx", count(self.nx, "nx", 2))
+        object.__setattr__(self, "ny", count(self.ny, "ny", 2))
         if 3*(self.nx+1)*(self.ny+1) > 1800:
             raise ValueError("this dense research model supports at most 1800 DOFs")
-        if self.support not in {"clamped", "hard_simply_supported"}:
+        if not isinstance(self.support, str) or self.support not in {"clamped", "hard_simply_supported"}:
             raise ValueError("support must be clamped or hard_simply_supported")
 
 
@@ -45,6 +47,7 @@ class PlateResult:
     relative_residual: float
 
 
+@checked_arithmetic
 def plate_element(model: Plate, width, height):
     """12x12 rectangular element and unit-pressure vector; corners CCW from LL."""
     if not isinstance(model, Plate):
@@ -77,6 +80,7 @@ def plate_element(model: Plate, width, height):
     return stiffness, unit_load
 
 
+@checked_arithmetic
 def solve_plate(model: Plate, *, pressure):
     """Uniform pressure on a rectangle with zero boundary displacement data."""
     if not isinstance(model, Plate):
@@ -110,4 +114,4 @@ def solve_plate(model: Plate, *, pressure):
     values = displacement.reshape(ny+1, nx+1, 3)
     return PlateResult(np.linspace(0.0, model.lx, nx+1), np.linspace(0.0, model.ly, ny+1),
                        values[:, :, 0], values[:, :, 1:], reactions.reshape(ny+1, nx+1, 3),
-                       float(displacement @ stiffness @ displacement / 2), residual)
+                       strain_energy(stiffness, displacement), residual)

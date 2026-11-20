@@ -11,6 +11,11 @@ cross-section expansion, shell, solid, laminate, nonlinear, dynamic, learned
 model or service interface is included. API compatibility with other ANF
 development versions is not provided.
 
+Parameter validation rejects invalid or unrepresentable inputs. Calculations
+that exceed floating-point range or fail the free-DOF residual check raise
+`ArithmeticError`; see the method notes. Staying below the model-size cap does
+not guarantee a sufficiently conditioned solve.
+
 ```bash
 python -m venv .venv
 # Activate the environment for your shell.

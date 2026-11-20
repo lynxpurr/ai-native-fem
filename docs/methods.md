@@ -45,3 +45,11 @@ a regression test exposes this behavior. Refinement of a thick plate is tested
 against the continuous mode solution. That does not validate arbitrary geometry,
 material, thickness, boundary conditions or loads. Results require independent
 review for an engineering application.
+
+Inputs are stored as finite Python floats and integer mesh counts, including
+when NumPy scalar inputs are supplied. The model-size caps limit memory use;
+they do not guarantee that every parameter combination is numerically solvable.
+Non-finite calculations, a singular constrained system or a free-DOF relative
+residual above `1e-8` raise `ArithmeticError`. The residual divides by the actual
+free-load norm, with scaling to avoid overflow/underflow; zero load requires
+zero free imbalance. Invalid input raises `ValueError`.

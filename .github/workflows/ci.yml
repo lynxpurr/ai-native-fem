@@ -9,11 +9,28 @@ jobs:
       matrix:
         python: ['3.11', '3.12']
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: ${{ matrix.python }}
-      - run: python -m pip install ".[test]"
-      - run: python -m pytest -q
+      - name: Install test tooling
+        run: python -m pip install ".[test]"
+      - name: Build wheel and source distribution
+        run: python -m build
+      - name: Install the built wheel
+        run: python -m pip install --force-reinstall --no-deps dist/*.whl
+      - name: Test the installed wheel outside the checkout
+        shell: bash
+        run: |
+          test_dir="$(mktemp -d)"
+          cp -R tests "$test_dir/tests"
+          cd "$test_dir"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          import anf
+          assert not Path(anf.__file__).resolve().is_relative_to(Path(os.environ["GITHUB_WORKSPACE"]))
+          PY
+          python -m pytest -q tests
