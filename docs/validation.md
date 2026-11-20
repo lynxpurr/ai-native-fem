@@ -4,7 +4,7 @@ The initial 33 physical/validation cases were run on Linux x86-64 using installe
 wheels, with Python 3.11.15 / NumPy 2.4.6 and Python 3.12.13 / NumPy 2.5.5. They
 remain unchanged. Version 0.1.0a2 adds regression cases for NumPy scalar overflow,
 input normalization, load-scale-independent residuals, numeric range failures
-and rejection of non-finite or unbalanced solutions: 65 cases in total, passing
+and rejection of non-finite or unbalanced solutions: 67 cases in total, passing
 in both Linux environments. CI builds distributions and
 runs tests against the installed wheel outside the checkout.
 This record covers this small prototype, not another development

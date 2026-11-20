@@ -29,6 +29,8 @@ def finite(value, name):
         raise ValueError(f"{name} must be representable as a finite float") from error
     if not math.isfinite(result):
         raise ValueError(f"{name} must be a finite real number")
+    if result == 0.0 and value != 0:
+        raise ValueError(f"{name} is too small to represent as a nonzero float")
     return result
 
 

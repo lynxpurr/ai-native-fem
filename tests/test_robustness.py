@@ -35,6 +35,15 @@ def test_bad_support_is_a_validation_error(support):
         Plate(1, 1, .1, 1e6, .3, support=support)
 
 
+@pytest.mark.parametrize("sign", [-1, 1])
+def test_nonzero_load_cannot_silently_underflow_during_input_conversion(sign):
+    load = Fraction(sign, 10**1000)
+    with pytest.raises(ValueError, match="too small"):
+        solve_cantilever(Beam(1, 10, 1), tip_force=load)
+    with pytest.raises(ValueError, match="too small"):
+        solve_plate(Plate(1, 1, .1, 1e6, .3), pressure=load)
+
+
 @pytest.mark.parametrize("bad", [float("inf"), float("nan")])
 def test_nonfinite_system_is_rejected_even_with_zero_load(bad):
     with pytest.raises(ValueError, match="finite"):
