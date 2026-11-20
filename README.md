@@ -40,3 +40,6 @@ baseline for studying convergence and locking, not a thin-plate accuracy solutio
 Project code is offered under [MIT](LICENSE). NumPy is installed separately;
 see [NOTICE](NOTICE). See [CONTRIBUTING.md](CONTRIBUTING.md) for source requirements
 and [SECURITY.md](SECURITY.md) for reporting.
+
+See the [runnable examples](examples/README.md) for analytical comparisons and
+the [research roadmap](docs/roadmap.md) for the maintenance and numerical work.
