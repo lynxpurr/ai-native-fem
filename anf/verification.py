@@ -281,14 +281,18 @@ def input_parameters(model, **loads):
         formulation, support = "euler_bernoulli_hermite", "cantilever"
     elif type(model) is Plate:
         normalized_loads = {"pressure": None}
-        formulation, support = "reissner_mindlin_q4_full", model.support
+        formulation, support = f"reissner_mindlin_{model.formulation}", model.support
     else:
         raise TypeError("model must be a Beam or Plate")
     if loads.keys() - normalized_loads.keys():
         raise ValueError("unknown load parameters")
     normalized_loads.update(loads)
+    model_parameters = asdict(model)
+    if type(model) is Plate and model.formulation == "q4_full":
+        # Keep the canonical schema 1.0 Q4 input and its existing SHA-256.
+        del model_parameters["formulation"]
     return {
-        "formulation": formulation, "support": support, "units": "SI", "model": asdict(model),
+        "formulation": formulation, "support": support, "units": "SI", "model": model_parameters,
         "loads": {name: finite(value, name) for name, value in normalized_loads.items()},
     }
 
@@ -304,6 +308,8 @@ def _reference(reference):
 
 
 def _plate_case(model, pressure):
+    if model.formulation != "q4_full":
+        return None
     if (model.lx, model.ly, model.young_modulus, model.poisson_ratio, model.shear_factor,
         model.support, pressure) != (1, 1, 70e9, 0.3, 5/6, "hard_simply_supported", 1000):
         return None
@@ -518,5 +524,5 @@ def verify_cantilever(model, *, tip_force=0.0, uniform_load=0.0, reference="auto
 
 
 def verify_plate(model, *, pressure, reference="auto"):
-    """Solve the Q4 plate and return a verification report, including failures."""
+    """Solve a plate and return a verification report, including failures."""
     return _verify(model, Plate, solve_plate, {"pressure": pressure}, reference)

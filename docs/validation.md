@@ -34,6 +34,44 @@ coefficient or reference-output substitution is used to conceal it.
 The [verification API](verification.md) reports the 16 × 16 thick case and
 the thin locking case with their observable, reference and error.
 
+## Rectangular MITC4
+
+The [plate tests](../tests/test_mitc4.py) run both `q4_full` and
+`mitc4_rectangle` on 1 m × 1 m and 2 m × 1 m hard simply supported plates.
+Each formulation uses four thicknesses and three uniform meshes, for 48 plate
+solves. The material, shear factor and pressure match the Q4 cases above.
+
+MITC4 center-deflection errors relative to the continuous Reissner–Mindlin
+series are shown below. Each axis retains odd indices through 255. Across the
+eight geometry and thickness combinations, the largest relative change from
+index 127 to 255 is `1.35e-7`.
+
+| `lx` × `ly` (m) | Thickness (m) | 4 × 4 | 8 × 8 | 16 × 16 |
+|---|---:|---:|---:|---:|
+| 1 × 1 | 0.2 | 1.012% | 0.213% | 0.052% |
+| 1 × 1 | 0.05 | 2.204% | 0.493% | 0.121% |
+| 1 × 1 | 0.01 | 2.295% | 0.514% | 0.126% |
+| 1 × 1 | 0.005 | 2.297% | 0.515% | 0.126% |
+| 2 × 1 | 0.2 | 0.868% | 0.411% | 0.108% |
+| 2 × 1 | 0.05 | 1.394% | 0.580% | 0.151% |
+| 2 × 1 | 0.01 | 1.430% | 0.593% | 0.154% |
+| 2 × 1 | 0.005 | 1.431% | 0.593% | 0.154% |
+
+The MITC4 errors decrease on both refinement steps in each row and stay below
+3% on 16 × 16. For the 0.005 m square on 8 × 8, the same series gives 98.90%
+error for Q4 and 0.515% for MITC4. With both formulations the tests require a
+free-DOF relative residual at most `1e-8`, relative vertical force imbalance
+below `1e-7`, and relative difference between external work and twice the strain
+energy below `1e-7`.
+
+Square and rectangular MITC4 elements at two thicknesses have three rigid
+body modes and nine positive stiffness modes. Tests check symmetry and
+pressure-load conservation, and check that constant curvature produces zero
+assumed shear and the exact bending energy within a relative tolerance of
+`1e-12`. The energy check integrates the bending contribution directly at
+Gauss points so the thin-plate result is insensitive to cancellation between
+assembled shear stiffness entries.
+
 Uniform-pressure rectangles and one-plane cantilever bending are the only
 tested application families. The tests do not certify arbitrary inputs or
 engineering use. Dense assembly also restricts model size.
