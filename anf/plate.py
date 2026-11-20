@@ -1,12 +1,17 @@
-"""Fully integrated rectangular Q4 Reissner-Mindlin plate model.
+"""Rectangular Q4 and MITC4 Reissner-Mindlin plate models.
 
 Only transverse bending of a homogeneous isotropic plate is included. Nodal
 DOFs are [w, beta_x, beta_y], with beta denoting slopes in the shear equation
-grad(w)-beta. This deliberately simple element is subject to shear locking.
+grad(w)-beta. The default fully integrated Q4 is subject to shear locking.
 """
 from dataclasses import dataclass
+from math import isfinite
 import numpy as np
 from ._linear import checked_arithmetic, count, eliminate, finite, positive, strain_energy
+
+
+_SIGNS_X = np.array([-1, 1, 1, -1])
+_SIGNS_Y = np.array([-1, -1, 1, 1])
 
 
 @dataclass(frozen=True)
@@ -20,6 +25,7 @@ class Plate:
     ny: int = 8
     support: str = "clamped"
     shear_factor: float = 5.0/6.0
+    formulation: str = "q4_full"
 
     def __post_init__(self):
         for name in ("lx", "ly", "thickness", "young_modulus", "shear_factor"):
@@ -34,6 +40,11 @@ class Plate:
             raise ValueError("this dense research model supports at most 1800 DOFs")
         if not isinstance(self.support, str) or self.support not in {"clamped", "hard_simply_supported"}:
             raise ValueError("support must be clamped or hard_simply_supported")
+        if (not isinstance(self.formulation, str)
+                or self.formulation not in {"q4_full", "mitc4_rectangle"}):
+            raise ValueError("formulation must be q4_full or mitc4_rectangle")
+        if self.formulation == "mitc4_rectangle" and self.support != "hard_simply_supported":
+            raise ValueError("mitc4_rectangle requires hard_simply_supported edges")
 
 
 @dataclass(frozen=True)
@@ -47,6 +58,35 @@ class PlateResult:
     relative_residual: float
 
 
+def _bending_matrix(model):
+    nu, t = model.poisson_ratio, model.thickness
+    rigidity = model.young_modulus*t**3/(12*(1-nu**2))
+    return rigidity*np.array([[1, nu, 0], [nu, 1, 0], [0, 0, (1-nu)/2]])
+
+
+def _curvature_matrix(dx, dy):
+    curvature = np.zeros((3, 12))
+    curvature[0, 1::3] = dx
+    curvature[1, 2::3] = dy
+    curvature[2, 1::3] = dy
+    curvature[2, 2::3] = dx
+    return curvature
+
+
+def _mitc4_shear_matrix(xi, eta, width, height):
+    """Interpolate edge-midpoint shear on an axis-aligned rectangle."""
+    # Bathe and Dvorkin (1985), eqs. (6)-(7). Each edge value is the
+    # transverse displacement difference per unit length minus the mean slope.
+    horizontal = (1 + _SIGNS_Y * eta) / 4
+    vertical = (1 + _SIGNS_X * xi) / 4
+    shear = np.zeros((2, 12))
+    shear[0, ::3] = 2 * horizontal * _SIGNS_X / width
+    shear[1, ::3] = 2 * vertical * _SIGNS_Y / height
+    shear[0, 1::3] = -horizontal
+    shear[1, 2::3] = -vertical
+    return shear
+
+
 @checked_arithmetic
 def plate_element(model: Plate, width, height):
     """12x12 rectangular element and unit-pressure vector; corners CCW from LL."""
@@ -54,29 +94,34 @@ def plate_element(model: Plate, width, height):
         raise TypeError("model must be a Plate")
     width = positive(width, "width"); height = positive(height, "height")
     E, nu, t = model.young_modulus, model.poisson_ratio, model.thickness
-    bending = E*t**3/(12*(1-nu**2))*np.array([[1, nu, 0], [nu, 1, 0], [0, 0, (1-nu)/2]])
+    bending = _bending_matrix(model)
     shear = model.shear_factor*E*t/(2*(1+nu))
+    mitc4 = model.formulation == "mitc4_rectangle"
+    if mitc4 and (bending[0, 0] <= 0 or not 0 < shear < float("inf")
+                  or not isfinite(2 * width) or not isfinite(2 * height)):
+        raise ArithmeticError("MITC4 element exceeds the supported floating-point range")
     stiffness = np.zeros((12, 12)); unit_load = np.zeros(12)
-    corners = np.array([[-1, -1], [1, -1], [1, 1], [-1, 1]])
+    signs_x, signs_y = _SIGNS_X, _SIGNS_Y
     points, weights = np.polynomial.legendre.leggauss(2)
     for xi, wx in zip(points, weights):
         for eta, wy in zip(points, weights):
-            signs_x, signs_y = corners.T
             shape = (1+signs_x*xi)*(1+signs_y*eta)/4
             dx = signs_x*(1+signs_y*eta)/(2*width)
             dy = signs_y*(1+signs_x*xi)/(2*height)
-            curvature = np.zeros((3, 12)); transverse = np.zeros((2, 12))
-            for node in range(4):
-                col = 3*node
-                curvature[0, col+1] = dx[node]
-                curvature[1, col+2] = dy[node]
-                curvature[2, col+1:col+3] = [dy[node], dx[node]]
-                transverse[:, col] = [dx[node], dy[node]]
-                transverse[0, col+1] = -shape[node]
-                transverse[1, col+2] = -shape[node]
+            curvature = _curvature_matrix(dx, dy)
+            if mitc4:
+                transverse = _mitc4_shear_matrix(xi, eta, width, height)
+            else:
+                transverse = np.zeros((2, 12))
+                transverse[0, ::3] = dx
+                transverse[1, ::3] = dy
+                transverse[0, 1::3] = -shape
+                transverse[1, 2::3] = -shape
             measure = wx*wy*width*height/4
             stiffness += measure*(curvature.T @ bending @ curvature + shear*transverse.T @ transverse)
             unit_load[::3] += measure*shape
+    if mitc4 and (np.any(unit_load[::3] <= 0) or np.any(stiffness.diagonal() <= 0)):
+        raise ArithmeticError("MITC4 element exceeds the supported floating-point range")
     return stiffness, unit_load
 
 
@@ -89,14 +134,21 @@ def solve_plate(model: Plate, *, pressure):
     nx, ny = model.nx, model.ny
     size = 3*(nx+1)*(ny+1)
     stiffness = np.zeros((size, size)); force = np.zeros(size)
-    local, unit_load = plate_element(model, model.lx/nx, model.ly/ny)
+    width, height = model.lx/nx, model.ly/ny
+    mitc4 = model.formulation == "mitc4_rectangle"
+    if mitc4 and (width == 0 or height == 0):
+        raise ArithmeticError("MITC4 element dimensions underflowed")
+    local, unit_load = plate_element(model, width, height)
+    local_load = pressure*unit_load
+    if mitc4 and pressure != 0 and np.any(local_load[::3] == 0):
+        raise ArithmeticError("MITC4 nodal pressure load underflowed")
     for j in range(ny):
         for i in range(nx):
             nodes = np.array([j*(nx+1)+i, j*(nx+1)+i+1,
                               (j+1)*(nx+1)+i+1, (j+1)*(nx+1)+i])
             dofs = (3*nodes[:, None]+np.arange(3)).ravel()
             stiffness[np.ix_(dofs, dofs)] += local
-            force[dofs] += pressure*unit_load
+            force[dofs] += local_load
     fixed = set()
     for j in range(ny+1):
         for i in range(nx+1):
@@ -112,6 +164,9 @@ def solve_plate(model: Plate, *, pressure):
                 if on_y: fixed.add(3*node+1)
     displacement, reactions, residual = eliminate(stiffness, force, sorted(fixed))
     values = displacement.reshape(ny+1, nx+1, 3)
+    energy = strain_energy(stiffness, displacement)
+    if mitc4 and pressure != 0 and energy <= 0:
+        raise ArithmeticError("nonpositive MITC4 strain energy under nonzero pressure")
     return PlateResult(np.linspace(0.0, model.lx, nx+1), np.linspace(0.0, model.ly, ny+1),
                        values[:, :, 0], values[:, :, 1:], reactions.reshape(ny+1, nx+1, 3),
-                       strain_energy(stiffness, displacement), residual)
+                       energy, residual)
