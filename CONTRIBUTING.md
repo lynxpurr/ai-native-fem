@@ -11,3 +11,17 @@ Preserve mathematical attribution and describe limitations accurately.
 
 Run `python -m pytest` and include convergence evidence for numerical changes.
 Do not replace an analytical reference with results of the code being tested.
+
+## Branches and pull requests
+
+1. Start each change from the latest `origin/develop` on its own
+   `feature/<short-name>` branch.
+2. Open a pull request to `develop`. Resolve review discussions and wait for
+   the Linux and Windows wheel tests, dependency audit and branch-source check
+   before using **Squash and merge**. Dependabot also targets `develop`.
+3. To promote the integrated changes, open a pull request from this repository's
+   `develop` branch to `main`. Wait for the checks on the proposed merge and
+   use **Create a merge commit** to preserve the integrated history.
+
+`main` is the release branch. Protected branches are updated through pull
+requests. A promotion to `main` does not create a release or a version tag.
