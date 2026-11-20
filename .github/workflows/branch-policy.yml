@@ -1,0 +1,77 @@
+name: branch-policy
+on:
+  pull_request_target:
+    branches: [main, develop]
+    types: [opened, reopened, synchronize, edited, ready_for_review]
+
+permissions:
+  pull-requests: read
+  statuses: write
+
+concurrency:
+  group: branch-policy-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      # Work only with GitHub's PR metadata. This job does not check out PR code.
+      - name: Verify source of the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          import time
+
+          repository = os.environ["GITHUB_REPOSITORY"]
+          event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
+          number = int(event["number"])
+          endpoint = f"repos/{repository}/pulls/{number}"
+
+          def github_api(*args):
+              return json.loads(subprocess.check_output(["gh", "api", *args]))
+
+          # GitHub computes the test merge asynchronously when a PR opens.
+          for _ in range(10):
+              pr = github_api(endpoint)
+              if pr["state"] != "open" or pr["base"]["ref"] not in {"main", "develop"}:
+                  raise SystemExit("The pull request is no longer in scope.")
+              merge_sha = pr["merge_commit_sha"]
+              if pr["mergeable"] is True and merge_sha:
+                  break
+              time.sleep(3)
+          else:
+              raise SystemExit("GitHub could not compute a merge commit. Resolve conflicts and retry.")
+
+          base = pr["base"]["ref"]
+          head = pr["head"]["ref"]
+          head_repository = pr["head"]["repo"]
+          same_repository = head_repository is not None and head_repository["id"] == pr["base"]["repo"]["id"]
+          if base == "main":
+              allowed = same_repository and head == "develop"
+              rule = "main accepts only this repository's develop branch."
+          else:
+              dependency_update = (
+                  pr["user"]["login"] == "dependabot[bot]"
+                  and head.startswith("dependabot/")
+              )
+              allowed = head.startswith("feature/") or dependency_update
+              rule = "develop accepts feature/* branches and Dependabot updates."
+
+          github_api(
+              "-X", "POST", f"repos/{repository}/statuses/{merge_sha}",
+              "-f", "context=branch-source",
+              "-f", f"state={'success' if allowed else 'failure'}",
+              "-f", f"description={rule}",
+              "-f", f"target_url={os.environ['GITHUB_SERVER_URL']}/{repository}/actions/runs/{os.environ['GITHUB_RUN_ID']}",
+          )
+          print(rule)
+          if not allowed:
+              raise SystemExit(1)
+          PY
