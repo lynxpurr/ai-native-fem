@@ -387,13 +387,16 @@ def test_archive_size_member_count_and_corruption(artifact):
 def test_output_boundaries_and_interruption(tmp_path, artifact, monkeypatch):
     result = run_analysis(beam_doc())
     original = (artifact / "manifest.json").read_bytes()
-    for name in ("../outside", r"..\outside", "/outside", "a:b", ".", "..", "NUL.txt", "outside."):
+    for name in ("../outside", r"..\outside", "/outside", "a:b", ".", "..", "NUL.txt",
+                 "COM¹.txt", "CONOUT$", "outside.", "outside "):
         with pytest.raises(ArtifactError, match="portable artifact name"):
             save_result(result, artifact, name)
     with pytest.raises(ArtifactError):
         save_result(result, tmp_path, "case")
     assert not (tmp_path / "outside").exists()
     assert (artifact / "manifest.json").read_bytes() == original
+    named = save_result(result, tmp_path, "梁 1")
+    assert load_result(named).report == result.report
 
     def interrupt(*args, **kwargs):
         raise OSError("simulated manifest publish interruption")

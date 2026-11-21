@@ -76,10 +76,9 @@ report fields](verification.md).
 ## Read or save a result directory
 
 `save_result(result, root, name)` takes an existing caller-controlled directory
-and a new portable name of up to 128 characters. Start the name with a letter,
-digit, underscore or hyphen. Interior periods and ASCII letters, digits,
-underscores and hyphens are allowed. The name must avoid reserved device
-names. The writer creates the destination exclusively and publishes
+and one new directory name. The name can contain Unicode characters and
+interior spaces. Use a single path component that is valid on Windows and
+POSIX. The writer creates the destination exclusively and publishes
 `manifest.json` last. An interrupted destination can be inspected as a partial
 write. Pick a fresh name for a retry. `load_result(directory)` raises
 `ArtifactError` for incomplete, invalid or unsafe artifacts.

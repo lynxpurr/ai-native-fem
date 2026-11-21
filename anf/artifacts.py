@@ -377,9 +377,10 @@ def _read_arrays(data, layout):
 
 
 def _safe_name(name):
-    if (not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}", name)
-            or name.endswith(".")
-            or re.fullmatch(r"CON|PRN|AUX|NUL|(?:COM|LPT)[0-9]", name.split(".")[0], re.I)):
+    if (not isinstance(name, str) or not name or name.endswith((".", " "))
+            or re.search(r'[<>:"/\\|?*\x00-\x1f]', name)
+            or re.fullmatch(r"CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|(?:COM|LPT)[1-9¹²³]",
+                            name.partition(".")[0].rstrip(" "), re.I)):
         raise ArtifactError("expected a single portable artifact name")
 
 
