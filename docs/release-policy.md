@@ -22,7 +22,7 @@ Keep the installed regression suite and examples passing. A passing suite
 does not establish source rights. See the
 [method notes](methods.md) and [validation record](validation.md).
 
-## Supported Python capabilities
+## Supported interfaces
 
 | Entry point | Scope |
 | --- | --- |
@@ -30,10 +30,17 @@ does not establish source rights. See the
 | `anf.Plate`, `anf.PlateResult`, `anf.solve_plate` | Linear Reissner–Mindlin bending under uniform pressure on axis-aligned rectangles. The default `q4_full` supports clamped and hard simply supported edges and can lock on thin plates. `mitc4_rectangle` requires hard simple support. |
 | `anf.verification.verify_cantilever`, `verify_plate`, `evaluate_checks`, `input_parameters` | Opt-in verification with report schema 1.0, an input fingerprint and applicability checks. Automatic MITC4 reports check the residual and leave successful solves `solved_unverified`. |
 | `anf.verification.VerificationReport`, `VerificationCheck`, `ReferenceKind`, `ReferenceRecord`, `REFERENCE_REGISTRY` | Report serialization and the bundled read-only reference registry described in the [verification guide](verification.md). |
+| `anf.model.validate_model`, `canonical_input_hash`, `anf.application.run_analysis` | Schema 1.0 static model declarations with explicit SI units, normalized fingerprints and shared analysis for the supported beam and plate problems. [Model format](model-format.md) |
+| `anf.artifacts.save_result`, `load_result` | Write and read schema 1.0 result manifests and numeric NPZ arrays within the documented limits. [Result format](model-format.md#read-or-save-a-result-directory) |
+| `anf validate`, `anf solve`, `anf inspect` | Validate a declaration, write a static analysis result and inspect an artifact from the installed command line. [CLI guide](cli.md) |
+| `anf.studies.StudySpec`, `run_convergence`, `anf.reporting.write_report` | Fixed-model mesh studies with replayable JSON, Markdown, SVG and per-mesh results. [Convergence guide](convergence.md) |
+| `anf-mcp --workspace PATH` | Optional local stdio server for capabilities, validation, solves, studies and artifact inspection. [MCP guide](mcp.md) |
 
-The base installation uses NumPy 2.x. The `test` extra supplies pytest and
-build tooling. CI records the resolved versions for Linux Python 3.11 and
-3.12 and Windows Python 3.12. See [NOTICE](../NOTICE) for license details.
+The base installation uses NumPy 2.x and includes the Python and CLI
+workflows. The `mcp` extra installs the MCP Python SDK and AnyIO to enable the
+stdio server. The `test` extra supplies pytest and build tooling. These
+dependencies are installed separately. Retain their applicable license files
+when redistributing a complete environment. See [NOTICE](../NOTICE).
 List API and report-schema migration instructions in the release notes when
 behavior changes. The verification guide documents the preserved default Q4
 fingerprint and the distinct MITC4 fingerprint.
@@ -44,11 +51,14 @@ The three required installation jobs build a wheel and sdist from the exact
 Git tree and check their file lists, source and license bytes, package
 metadata, SHA-256 digests and wheel `RECORD`. Each package is installed in
 its own clean environment outside the checkout. The jobs run the installed
-test suite and four example commands. After they pass, each job uploads both
+test suite and four example commands. The installation jobs exercise the
+MCP extra, and the dependency-advisory workflow audits the resolved test and
+MCP dependencies. After the installation checks pass, each job uploads both
 packages, `SHA256SUMS` and `release-manifest.json`. The manifest records the
 commit, tree, version, checked paths, package hashes, installed dependencies
 and CI run and attempt. For pull requests, it also records the base and
-head SHAs alongside the actual tested merge commit.
+head SHAs alongside the actual tested merge commit. The manifests record
+versions for Linux Python 3.11 and 3.12 and Windows Python 3.12.
 
 To rehearse locally from the repository root with Python 3.11 or 3.12:
 

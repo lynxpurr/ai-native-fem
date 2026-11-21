@@ -1,8 +1,8 @@
 # Research roadmap
 
 The current package is a classical, isotropic beam/rectangular plate research
-baseline. This roadmap describes intended work, not available capabilities or
-a delivery date. Contributions should follow CONTRIBUTING.md.
+baseline. The sections below record the capabilities by version and outline
+future research. See [CONTRIBUTING](../CONTRIBUTING.md) for contributions.
 
 ## Maintenance iteration
 
@@ -20,13 +20,15 @@ build and installed again.
 [Prerelease](https://github.com/lynxpurr/ai-native-fem/releases/tag/v0.1.0a3) ·
 [Release policy](release-policy.md)
 
-## Versioned models and results
+## Versioned models and results in 0.1.0a4
 
-Planned work starts with SI model files for the existing beam and rectangular
-plate solvers and result artifacts that preserve each input fingerprint,
-solve status and physical quantities. A shared analysis entry point will
-support a command-line interface and a local MCP interface. Convergence
-reports will record each mesh, reference comparison and failure.
+The [0.1.0a4 release notes](releases/0.1.0a4.md) describe the shared analysis
+workflow for the existing beam and rectangular plate solvers. Use versioned
+SI model files and JSON/NPZ result artifacts from
+[Python](model-format.md) or the [installed command line](cli.md).
+[Mesh convergence reports](convergence.md) record each mesh, reference
+comparison and failure for replay. The [optional local MCP server](mcp.md)
+exposes these operations over stdio.
 
 ## Plate research
 
