@@ -1,0 +1,39 @@
+{
+  "repository": [
+    ".github/dependabot.yml",
+    ".github/workflows/branch-policy.yml",
+    ".github/workflows/ci.yml",
+    ".github/workflows/release-evidence.py",
+    ".github/workflows/release-files.json",
+    ".github/workflows/security.yml",
+    ".gitignore"
+  ],
+  "package": [
+    "anf/__init__.py",
+    "anf/_linear.py",
+    "anf/beam.py",
+    "anf/plate.py",
+    "anf/verification.py"
+  ],
+  "licenses": ["LICENSE", "NOTICE"],
+  "source_distribution": [
+    "CONTRIBUTING.md",
+    "MANIFEST.in",
+    "README.md",
+    "SECURITY.md",
+    "docs/methods.md",
+    "docs/release-policy.md",
+    "docs/roadmap.md",
+    "docs/validation.md",
+    "docs/verification.md",
+    "examples/README.md",
+    "examples/beam.py",
+    "examples/plate_convergence.py",
+    "examples/plate_locking.py",
+    "pyproject.toml",
+    "tests/test_classical.py",
+    "tests/test_mitc4.py",
+    "tests/test_robustness.py",
+    "tests/test_verification.py"
+  ]
+}
