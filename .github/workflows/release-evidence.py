@@ -48,7 +48,8 @@ assert sorted(anf.__all__) == [
     "Beam", "BeamResult", "Plate", "PlateResult", "solve_cantilever", "solve_plate"
 ]
 assert version("ai-native-fem") == sys.argv[1]
-print(json.dumps({name: version(name) for name in ("ai-native-fem", "numpy", "pytest", "build")}))
+packages = ("ai-native-fem", "numpy", "pytest", "build", *sys.argv[2:])
+print(json.dumps({name: version(name) for name in packages}))
 """
 
 
@@ -226,18 +227,20 @@ def verify_release(wheel, sdist, source, source_files, project):
     return {wheel.name: sorted(wheel_contents), sdist.name: sorted(sdist_contents)}
 
 
-def install_and_test(asset, source_dir, version, directory):
+def install_and_test(asset, source_dir, version, directory, *, mcp):
     print(f"Testing installed {asset.name}", flush=True)
     directory.mkdir()
     environment = directory / "venv"
     subprocess.run([sys.executable, "-I", "-m", "venv", str(environment)], check=True, cwd=directory)
     python = environment / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
     run = [str(python), "-I"]
+    extras = "test,mcp" if mcp else "test"
     subprocess.run(
-        [*run, "-m", "pip", "--disable-pip-version-check", "install", f"{asset}[test]"],
+        [*run, "-m", "pip", "--disable-pip-version-check", "install", f"{asset}[{extras}]"],
         check=True, cwd=directory,
     )
-    versions = json.loads(subprocess.check_output([*run, "-c", CHECK_INSTALL, version], cwd=directory))
+    optional = ["mcp", "anyio"] if mcp else []
+    versions = json.loads(subprocess.check_output([*run, "-c", CHECK_INSTALL, version, *optional], cwd=directory))
     for name in ("tests", "examples"):
         copytree(source_dir / name, directory / name)
     subprocess.run([*run, "-m", "pytest", "-q", "tests"], check=True, cwd=directory)
@@ -345,7 +348,8 @@ def main():
             "platform": sys.platform,
             "python": sys.version.split()[0],
             "installations": {
-                asset.name: install_and_test(asset, source_dir, source["version"], work / f"test-{index}")
+                asset.name: install_and_test(asset, source_dir, source["version"], work / f"test-{index}",
+                                             mcp="mcp" in project.get("optional-dependencies", {}))
                 for index, asset in enumerate((wheel, sdist))
             },
             "release": release,
