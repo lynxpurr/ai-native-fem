@@ -37,6 +37,7 @@ versioned SI model and save a result that another Python process can inspect.
 The [installed command line](docs/cli.md) runs the same workflow from a shell.
 Use a [mesh convergence study](docs/convergence.md) to compare explicit grids
 and save a replayable report with the result from each solve.
+The [optional local MCP server](docs/mcp.md) exposes these operations over stdio.
 
 Use consistent SI units. The beam API models one bending plane. The plate
 supports uniform pressure on axis-aligned rectangular domains. The default
