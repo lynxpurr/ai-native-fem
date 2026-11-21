@@ -2,3 +2,6 @@ include LICENSE NOTICE README.md CONTRIBUTING.md SECURITY.md
 recursive-include docs *.md
 recursive-include tests *.py
 recursive-include examples *.py *.md
+recursive-include examples/models *.json
+recursive-include examples/studies *.json
+include schemas/model-v1.json schemas/result-v1.json

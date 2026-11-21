@@ -1,0 +1,291 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lynxpurr/ai-native-fem/develop/schemas/model-v1.json",
+  "title": "ANF model declaration 1.0",
+  "description": "Versioned SI inputs to the classical static solvers. Runtime validation also checks UTF-8 JSON byte limits, duplicate keys and finite floating-point representation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "problem_type",
+    "units",
+    "model",
+    "loads",
+    "analysis"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "problem_type": {
+      "enum": [
+        "cantilever_bending",
+        "rectangular_plate"
+      ]
+    },
+    "units": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "length",
+        "force",
+        "stress"
+      ],
+      "properties": {
+        "length": {
+          "const": "m"
+        },
+        "force": {
+          "const": "N"
+        },
+        "stress": {
+          "const": "Pa"
+        }
+      }
+    },
+    "model": {
+      "type": "object"
+    },
+    "loads": {
+      "type": "object"
+    },
+    "analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "const": "static"
+        }
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "problem_type": {
+          "const": "cantilever_bending"
+        },
+        "model": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "length",
+            "young_modulus",
+            "second_moment"
+          ],
+          "properties": {
+            "length": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Beam span in m."
+            },
+            "young_modulus": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Young's modulus in Pa."
+            },
+            "second_moment": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Second moment of area in m^4."
+            },
+            "elements": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 8
+            }
+          }
+        },
+        "loads": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [],
+          "properties": {
+            "tip_force": {
+              "type": "number",
+              "description": "Tip force in N.",
+              "default": 0
+            },
+            "uniform_load": {
+              "type": "number",
+              "description": "Uniform line load in N/m.",
+              "default": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "properties": {
+        "problem_type": {
+          "const": "rectangular_plate"
+        },
+        "model": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "lx",
+            "ly",
+            "thickness",
+            "young_modulus",
+            "poisson_ratio"
+          ],
+          "properties": {
+            "lx": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Span along x in m."
+            },
+            "ly": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Span along y in m."
+            },
+            "thickness": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Plate thickness in m."
+            },
+            "young_modulus": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Young's modulus in Pa."
+            },
+            "poisson_ratio": {
+              "type": "number",
+              "exclusiveMinimum": -1,
+              "exclusiveMaximum": 0.5
+            },
+            "nx": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 199,
+              "default": 8
+            },
+            "ny": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 199,
+              "default": 8
+            },
+            "support": {
+              "enum": [
+                "clamped",
+                "hard_simply_supported"
+              ],
+              "default": "clamped"
+            },
+            "shear_factor": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Dimensionless shear correction factor.",
+              "default": 0.8333333333333334
+            },
+            "formulation": {
+              "enum": [
+                "q4_full",
+                "mitc4_rectangle"
+              ],
+              "default": "q4_full"
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "required": [
+                  "formulation"
+                ],
+                "properties": {
+                  "formulation": {
+                    "const": "mitc4_rectangle"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "support"
+                ],
+                "properties": {
+                  "support": {
+                    "const": "hard_simply_supported"
+                  }
+                }
+              }
+            },
+            {
+              "$ref": "#/$defs/plateMesh"
+            }
+          ]
+        },
+        "loads": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "pressure"
+          ],
+          "properties": {
+            "pressure": {
+              "type": "number",
+              "description": "Uniform pressure in Pa."
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "plateMesh": {
+      "description": "At most 3 × (nx + 1) × (ny + 1) = 1800 DOFs. Omitted counts default to 8.",
+      "allOf": [
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 3}}}, "then": {"properties": {"ny": {"maximum": 149}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 4}}}, "then": {"properties": {"ny": {"maximum": 119}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 5}}}, "then": {"properties": {"ny": {"maximum": 99}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 6}}}, "then": {"properties": {"ny": {"maximum": 84}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 7}}}, "then": {"properties": {"ny": {"maximum": 74}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 8}}}, "then": {"properties": {"ny": {"maximum": 65}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 9}}}, "then": {"properties": {"ny": {"maximum": 59}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 10}}}, "then": {"properties": {"ny": {"maximum": 53}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 11}}}, "then": {"properties": {"ny": {"maximum": 49}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 12}}}, "then": {"properties": {"ny": {"maximum": 45}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 13}}}, "then": {"properties": {"ny": {"maximum": 41}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 14}}}, "then": {"properties": {"ny": {"maximum": 39}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 15}}}, "then": {"properties": {"ny": {"maximum": 36}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 16}}}, "then": {"properties": {"ny": {"maximum": 34}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 17}}}, "then": {"properties": {"ny": {"maximum": 32}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 18}}}, "then": {"properties": {"ny": {"maximum": 30}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 19}}}, "then": {"properties": {"ny": {"maximum": 29}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 20}}}, "then": {"properties": {"ny": {"maximum": 27}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 21}}}, "then": {"properties": {"ny": {"maximum": 26}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 22}}}, "then": {"properties": {"ny": {"maximum": 25}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 23}}}, "then": {"properties": {"ny": {"maximum": 24}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 24}}}, "then": {"properties": {"ny": {"maximum": 23}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 25}}}, "then": {"properties": {"ny": {"maximum": 22}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 26}}}, "then": {"properties": {"ny": {"maximum": 21}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 27}}}, "then": {"properties": {"ny": {"maximum": 20}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 28}}}, "then": {"properties": {"ny": {"maximum": 19}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 30}}}, "then": {"properties": {"ny": {"maximum": 18}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 31}}}, "then": {"properties": {"ny": {"maximum": 17}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 33}}}, "then": {"properties": {"ny": {"maximum": 16}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 35}}}, "then": {"properties": {"ny": {"maximum": 15}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 37}}}, "then": {"properties": {"ny": {"maximum": 14}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 40}}}, "then": {"properties": {"ny": {"maximum": 13}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 42}}}, "then": {"properties": {"ny": {"maximum": 12}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 46}}}, "then": {"properties": {"ny": {"maximum": 11}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 50}}}, "then": {"properties": {"ny": {"maximum": 10}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 54}}}, "then": {"properties": {"ny": {"maximum": 9}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 60}}}, "then": {"properties": {"ny": {"maximum": 8}}}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 66}}}, "then": {"properties": {"ny": {"maximum": 7}}, "required": ["ny"]}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 75}}}, "then": {"properties": {"ny": {"maximum": 6}}, "required": ["ny"]}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 85}}}, "then": {"properties": {"ny": {"maximum": 5}}, "required": ["ny"]}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 100}}}, "then": {"properties": {"ny": {"maximum": 4}}, "required": ["ny"]}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 120}}}, "then": {"properties": {"ny": {"maximum": 3}}, "required": ["ny"]}},
+        {"if": {"required": ["nx"], "properties": {"nx": {"minimum": 150}}}, "then": {"properties": {"ny": {"maximum": 2}}, "required": ["ny"]}},
+        {"if": {"not": {"required": ["nx"]}}, "then": {"properties": {"ny": {"maximum": 65}}}}
+      ]
+    }
+  }
+}

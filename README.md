@@ -32,6 +32,13 @@ print(result.deflection[-1])  # analytical value: 0.0126984127 m
 Use [verification reports](docs/verification.md) to compare a solve with a
 registered reference and inspect its error, tolerance and input fingerprint.
 
+Use the [declarative model and result format](docs/model-format.md) to run a
+versioned SI model and save a result that another Python process can inspect.
+The [installed command line](docs/cli.md) runs the same workflow from a shell.
+Use a [mesh convergence study](docs/convergence.md) to compare explicit grids
+and save a replayable report with the result from each solve.
+The [optional local MCP server](docs/mcp.md) exposes these operations over stdio.
+
 Use consistent SI units. The beam API models one bending plane. The plate
 supports uniform pressure on axis-aligned rectangular domains. The default
 `q4_full` supports clamped and hard simply supported edges and can exhibit

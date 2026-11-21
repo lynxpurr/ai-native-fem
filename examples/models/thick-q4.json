@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "problem_type": "rectangular_plate",
+  "units": {
+    "length": "m",
+    "force": "N",
+    "stress": "Pa"
+  },
+  "model": {
+    "lx": 1,
+    "ly": 1,
+    "thickness": 0.2,
+    "young_modulus": 70000000000,
+    "poisson_ratio": 0.3,
+    "nx": 16,
+    "ny": 16,
+    "support": "hard_simply_supported"
+  },
+  "loads": {
+    "pressure": 1000
+  },
+  "analysis": {
+    "type": "static"
+  }
+}
