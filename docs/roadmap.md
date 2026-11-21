@@ -7,14 +7,26 @@ a delivery date. Contributions should follow CONTRIBUTING.md.
 ## Maintenance iteration
 
 - Reproducible cantilever, thick-plate convergence and thin-plate locking examples.
-- Installed-wheel testing on Linux Python 3.11/3.12 and Windows Python 3.12.
+- Wheel and source distribution installation tests on Linux Python 3.11/3.12
+  and Windows Python 3.12.
 - Dependency advisory checking and reviewed dependency/Actions update PRs.
 - Investigate fine-mesh beam conditioning using analytical displacement, force
   balance and the original residual requirement. Model-size limits alone do not
   guarantee a solve.
 
-The next prerelease target is 0.1.0a3 after artifact validation. Existing release
-tags and artifacts remain fixed; CI success is required before merging changes.
+The 0.1.0a3 prerelease includes verification reports and rectangular MITC4.
+Both public distributions were downloaded, checked against the approved CI
+build and installed again.
+[Prerelease](https://github.com/lynxpurr/ai-native-fem/releases/tag/v0.1.0a3) ·
+[Release policy](release-policy.md)
+
+## Versioned models and results
+
+Planned work starts with SI model files for the existing beam and rectangular
+plate solvers and result artifacts that preserve each input fingerprint,
+solve status and physical quantities. A shared analysis entry point will
+support a command-line interface and a local MCP interface. Convergence
+reports will record each mesh, reference comparison and failure.
 
 ## Plate research
 
