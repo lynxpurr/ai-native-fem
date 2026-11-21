@@ -1,0 +1,652 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lynxpurr/ai-native-fem/develop/schemas/result-v1.json",
+  "title": "ANF result manifest 1.0",
+  "description": "Metadata for an ANF result directory. Readers additionally check report and model consistency, model-derived shapes and ZIP/NPY contents.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "model",
+    "input_hash",
+    "solve_status",
+    "verification_status",
+    "versions",
+    "reference",
+    "report",
+    "diagnostics",
+    "strain_energy",
+    "relative_residual",
+    "arrays",
+    "arrays_sha256"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "model": {
+      "$ref": "model-v1.json",
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "problem_type": {
+                "const": "cantilever_bending"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "model": {
+                "required": [
+                  "elements"
+                ]
+              },
+              "loads": {
+                "required": [
+                  "tip_force",
+                  "uniform_load"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "problem_type": {
+                "const": "rectangular_plate"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "model": {
+                "required": [
+                  "nx",
+                  "ny",
+                  "support",
+                  "shear_factor",
+                  "formulation"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "input_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "solve_status": {
+      "enum": [
+        "solved",
+        "numerical_failure"
+      ]
+    },
+    "verification_status": {
+      "enum": [
+        "verification_passed",
+        "verification_failed",
+        "solved_unverified",
+        "not_run"
+      ]
+    },
+    "versions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "anf",
+        "python",
+        "numpy"
+      ],
+      "properties": {
+        "anf": {
+          "type": "string",
+          "minLength": 1
+        },
+        "python": {
+          "type": "string",
+          "minLength": 1
+        },
+        "numpy": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "reference": {
+      "enum": [
+        null,
+        "cantilever.closed-form.v1",
+        "plate.navier-31.v1",
+        "plate.thin-q4-navier-31.v1",
+        "plate.thin-q4-snapshot.v1"
+      ]
+    },
+    "report": {
+      "$ref": "#/$defs/report"
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "enum": [
+              "numerical_failure",
+              "verification_warning"
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "strain_energy": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "Strain energy in J."
+    },
+    "relative_residual": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 1e-8,
+      "description": "Dimensionless free-DOF residual."
+    },
+    "arrays": {
+      "type": "object"
+    },
+    "arrays_sha256": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        {
+          "const": null
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "solve_status": {
+            "const": "solved"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "verification_status": {
+            "enum": [
+              "verification_passed",
+              "verification_failed",
+              "solved_unverified"
+            ]
+          },
+          "strain_energy": {
+            "type": "number"
+          },
+          "relative_residual": {
+            "type": "number"
+          },
+          "arrays_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "solve_status": {
+            "const": "numerical_failure"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "verification_status": {
+            "const": "not_run"
+          },
+          "strain_energy": {
+            "const": null
+          },
+          "relative_residual": {
+            "const": null
+          },
+          "arrays_sha256": {
+            "const": null
+          },
+          "arrays": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "solve_status": {
+            "const": "solved"
+          },
+          "model": {
+            "properties": {
+              "problem_type": {
+                "const": "cantilever_bending"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "arrays": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "x",
+              "deflection",
+              "slope",
+              "root_force",
+              "root_moment"
+            ],
+            "properties": {
+              "x": {
+                "properties": {
+                  "position": {
+                    "const": "node"
+                  },
+                  "unit": {
+                    "const": "m"
+                  }
+                },
+                "$ref": "#/$defs/array"
+              },
+              "deflection": {
+                "properties": {
+                  "position": {
+                    "const": "node"
+                  },
+                  "unit": {
+                    "const": "m"
+                  }
+                },
+                "$ref": "#/$defs/array"
+              },
+              "slope": {
+                "properties": {
+                  "position": {
+                    "const": "node"
+                  },
+                  "unit": {
+                    "const": "rad"
+                  }
+                },
+                "$ref": "#/$defs/array"
+              },
+              "root_force": {
+                "properties": {
+                  "position": {
+                    "const": "root_node"
+                  },
+                  "unit": {
+                    "const": "N"
+                  }
+                },
+                "$ref": "#/$defs/array"
+              },
+              "root_moment": {
+                "properties": {
+                  "position": {
+                    "const": "root_node"
+                  },
+                  "unit": {
+                    "const": "N·m"
+                  }
+                },
+                "$ref": "#/$defs/array"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "solve_status": {
+            "const": "solved"
+          },
+          "model": {
+            "properties": {
+              "problem_type": {
+                "const": "rectangular_plate"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "arrays": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "x",
+              "y",
+              "deflection",
+              "beta_x",
+              "beta_y",
+              "reaction_force",
+              "reaction_moment_x_dof",
+              "reaction_moment_y_dof"
+            ],
+            "properties": {
+              "x": {
+                "properties": {
+                  "position": {
+                    "const": "x_axis"
+                  },
+                  "unit": {
+                    "const": "m"
+                  }
+                },
+                "$ref": "#/$defs/array"
+              },
+              "y": {
+                "properties": {
+                  "position": {
+                    "const": "y_axis"
+                  },
+                  "unit": {
+                    "const": "m"
+                  }
+                },
+                "$ref": "#/$defs/array"
+              },
+              "deflection": {
+                "properties": {
+                  "position": {
+                    "const": "node"
+                  },
+                  "unit": {
+                    "const": "m"
+                  }
+                },
+                "$ref": "#/$defs/array"
+              },
+              "beta_x": {
+                "properties": {
+                  "position": {
+                    "const": "node"
+                  },
+                  "unit": {
+                    "const": "rad"
+                  }
+                },
+                "$ref": "#/$defs/array"
+              },
+              "beta_y": {
+                "properties": {
+                  "position": {
+                    "const": "node"
+                  },
+                  "unit": {
+                    "const": "rad"
+                  }
+                },
+                "$ref": "#/$defs/array"
+              },
+              "reaction_force": {
+                "properties": {
+                  "position": {
+                    "const": "node"
+                  },
+                  "unit": {
+                    "const": "N"
+                  }
+                },
+                "$ref": "#/$defs/array"
+              },
+              "reaction_moment_x_dof": {
+                "properties": {
+                  "position": {
+                    "const": "node"
+                  },
+                  "unit": {
+                    "const": "N·m"
+                  }
+                },
+                "$ref": "#/$defs/array"
+              },
+              "reaction_moment_y_dof": {
+                "properties": {
+                  "position": {
+                    "const": "node"
+                  },
+                  "unit": {
+                    "const": "N·m"
+                  }
+                },
+                "$ref": "#/$defs/array"
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "report": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "input_hash",
+        "input_status",
+        "solve_status",
+        "checks",
+        "warnings",
+        "scope",
+        "verification_status",
+        "reference_ids"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "1.0"
+        },
+        "input_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "input_status": {
+          "const": "valid"
+        },
+        "solve_status": {
+          "enum": [
+            "solved",
+            "numerical_failure"
+          ]
+        },
+        "checks": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "items": {
+            "$ref": "#/$defs/check"
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "scope": {
+          "type": "string",
+          "minLength": 1
+        },
+        "verification_status": {
+          "enum": [
+            "verification_passed",
+            "verification_failed",
+            "solved_unverified",
+            "not_run"
+          ]
+        },
+        "reference_ids": {
+          "type": "array",
+          "maxItems": 1,
+          "items": {
+            "enum": [
+              "cantilever.closed-form.v1",
+              "plate.navier-31.v1",
+              "plate.thin-q4-navier-31.v1",
+              "plate.thin-q4-snapshot.v1"
+            ]
+          }
+        }
+      }
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "observable",
+        "observed",
+        "reference",
+        "unit",
+        "metric",
+        "threshold",
+        "outcome",
+        "evidence_id",
+        "error",
+        "error_scale",
+        "reference_error_bound"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "observable": {
+          "type": "string",
+          "minLength": 1
+        },
+        "observed": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "reference": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "unit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "metric": {
+          "type": "string",
+          "minLength": 1
+        },
+        "threshold": {
+          "type": "number",
+          "minimum": 0
+        },
+        "outcome": {
+          "enum": [
+            "pass",
+            "fail",
+            "not_applicable",
+            "not_run"
+          ]
+        },
+        "evidence_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "error": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "error_scale": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "reference_error_bound": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "array": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dtype",
+        "shape",
+        "unit",
+        "position"
+      ],
+      "properties": {
+        "dtype": {
+          "const": "<f8"
+        },
+        "shape": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000000
+          }
+        },
+        "unit": {
+          "enum": [
+            "m",
+            "rad",
+            "N",
+            "N·m"
+          ]
+        },
+        "position": {
+          "enum": [
+            "node",
+            "root_node",
+            "x_axis",
+            "y_axis"
+          ]
+        }
+      }
+    }
+  }
+}

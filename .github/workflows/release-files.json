@@ -11,7 +11,10 @@
   "package": [
     "anf/__init__.py",
     "anf/_linear.py",
+    "anf/application.py",
+    "anf/artifacts.py",
     "anf/beam.py",
+    "anf/model.py",
     "anf/plate.py",
     "anf/verification.py"
   ],
@@ -22,6 +25,7 @@
     "README.md",
     "SECURITY.md",
     "docs/methods.md",
+    "docs/model-format.md",
     "docs/release-policy.md",
     "docs/releases/0.1.0a3.md",
     "docs/roadmap.md",
@@ -32,8 +36,11 @@
     "examples/plate_convergence.py",
     "examples/plate_locking.py",
     "pyproject.toml",
+    "schemas/model-v1.json",
+    "schemas/result-v1.json",
     "tests/test_classical.py",
     "tests/test_mitc4.py",
+    "tests/test_model_artifacts.py",
     "tests/test_robustness.py",
     "tests/test_verification.py"
   ]
