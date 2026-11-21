@@ -34,6 +34,7 @@ registered reference and inspect its error, tolerance and input fingerprint.
 
 Use the [declarative model and result format](docs/model-format.md) to run a
 versioned SI model and save a result that another Python process can inspect.
+The [installed command line](docs/cli.md) runs the same workflow from a shell.
 
 Use consistent SI units. The beam API models one bending plane. The plate
 supports uniform pressure on axis-aligned rectangular domains. The default
