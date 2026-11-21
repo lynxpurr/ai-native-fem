@@ -17,6 +17,8 @@
     "anf/cli.py",
     "anf/model.py",
     "anf/plate.py",
+    "anf/reporting.py",
+    "anf/studies.py",
     "anf/verification.py"
   ],
   "licenses": ["LICENSE", "NOTICE"],
@@ -26,6 +28,7 @@
     "README.md",
     "SECURITY.md",
     "docs/cli.md",
+    "docs/convergence.md",
     "docs/methods.md",
     "docs/model-format.md",
     "docs/release-policy.md",
@@ -41,6 +44,8 @@
     "examples/models/thin-q4.json",
     "examples/plate_convergence.py",
     "examples/plate_locking.py",
+    "examples/studies/thick-q4.json",
+    "examples/studies/thin-q4.json",
     "pyproject.toml",
     "schemas/model-v1.json",
     "schemas/result-v1.json",
@@ -49,6 +54,7 @@
     "tests/test_mitc4.py",
     "tests/test_model_artifacts.py",
     "tests/test_robustness.py",
+    "tests/test_studies_reports.py",
     "tests/test_verification.py"
   ]
 }
