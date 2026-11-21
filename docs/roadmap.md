@@ -18,11 +18,10 @@ tags and artifacts remain fixed; CI success is required before merging changes.
 
 ## Plate research
 
-Evaluate a literature-based locking-resistant discretization. Preserve the
-fully integrated Q4 as a comparison. A new formulation needs documented equations,
-independent continuous references, thickness and mesh convergence, rigid modes,
-absence of spurious zero-energy modes, symmetry and force balance. Method selection
-and validation precede implementation and accuracy claims.
+The rectangular MITC4 implementation covers hard simply supported edges under
+uniform pressure. The fully integrated Q4 remains the default and provides a
+locking comparison. Extending MITC4 to clamped edges or general quadrilaterals
+requires separate derivation and independent verification.
 
 Additional material models, shells and higher-order formulations require separate
 source review, mathematical specification and validation before inclusion.

@@ -22,29 +22,49 @@ Let the nodal fields be `w, beta_x, beta_y`, with engineering curvature
 The bending matrix is `Et³/[12(1-nu²)] * [[1,nu,0],[nu,1,0],[0,0,(1-nu)/2]]`.
 The shear coefficient is `kGt`, with `G=E/[2(1+nu)]` and default `k=5/6`.
 The energy is one half of bending plus shear quadratic forms, minus pressure
-work. Four bilinear corner functions interpolate all three fields. Both energy
-terms use a 2-by-2 Gauss rule; no reduced-integration stabilization is added.
+work. Four bilinear corner functions interpolate all three fields. Each node
+has DOFs `[w, beta_x, beta_y]`. Local nodes run counterclockwise from the lower
+left, so the natural-coordinate corners are `(-1,-1), (+1,-1), (+1,+1), (-1,+1)`.
+Positive pressure acts in the positive `w` direction. `beta_x` and `beta_y`
+are the slope components subtracted from the corresponding derivatives of `w`.
+Bending, shear and pressure loads use 2 × 2 Gauss integration.
 
-J. Schöberl's [Reissner–Mindlin notes](https://jschoeberl.github.io/iFEM/plates_shells/2_ReissnerMindlin.html)
-provide the underlying energy and discuss shear locking. The mixed discretization
-in those notes is not the Q4 displacement element implemented here. The notes'
-code is not used.
+The default `formulation="q4_full"` evaluates `grad(w)-beta` directly at each
+Gauss point. It can severely underestimate thin-plate deflection because of
+shear locking. Select `formulation="mitc4_rectangle"` to interpolate the
+transverse shear components from the four edge midpoints.
+
+```text
+gamma_x_assumed = ((1-eta)/2) gamma_x(0,-1) + ((1+eta)/2) gamma_x(0,+1)
+gamma_y_assumed = ((1-xi) /2) gamma_y(-1,0) + ((1+xi) /2) gamma_y(+1,0)
+```
+
+Each edge value is the displacement difference divided by edge length, minus
+the mean slope component along that edge. The axis-aligned rectangle has a
+constant diagonal Jacobian, so the covariant scale for each component cancels
+when it is mapped back to physical shear. In the source, ANF's corner order is
+3, 4, 1, 2. ANF's `beta_x` is the negative of the paper's `beta_x`, and
+`beta_y` has the same sign. The curvature vector changes sign as a whole,
+which preserves its energy. See Figure 2 and equations (1)–(7) in
+[Bathe and Dvorkin (1985)](https://doi.org/10.1002/nme.1620210213).
 
 Clamping sets all boundary DOFs to zero. Hard simple support sets `w=0` and
-the tangential component of beta to zero. For the independent uniform-pressure
+the tangential component of beta to zero, with the normal bending moment a
+natural boundary condition. `mitc4_rectangle` requires `support="hard_simply_supported"`.
+The API builds a uniform axis-aligned mesh from `lx`, `ly`, `nx` and `ny` and
+accepts a scalar pressure. For the independent uniform-pressure
 reference, sine load modes have coefficient `16q/(pi²mn)` for odd `m,n`.
 Minimizing the continuous energy mode by mode gives compliance
 `1/(D lambda²)+1/(kGt lambda)`, with `lambda=(m pi/a)²+(n pi/b)²`.
-The tests sum these modes directly without finite element assembly or fixtures.
+The tests sum these modes directly from the continuous energy described in
+[Schöberl's Reissner–Mindlin notes](https://jschoeberl.github.io/iFEM/plates_shells/2_ReissnerMindlin.html).
 
 ## Restrictions
 
-Only homogeneous isotropic, rectangular and small-displacement cases are
-included. Full Q4 integration can severely underestimate thin-plate deflection;
-a regression test exposes this behavior. Refinement of a thick plate is tested
-against the continuous mode solution. That does not validate arbitrary geometry,
-material, thickness, boundary conditions or loads. Results require independent
-review for an engineering application.
+The plate model is limited to homogeneous isotropic, rectangular and
+small-displacement cases. The [validation record](validation.md) lists the
+tested material, thicknesses, boundary conditions and loads. Results require
+independent review for an engineering application.
 
 Inputs are stored as finite Python floats and integer mesh counts, including
 when NumPy scalar inputs are supplied. The model-size caps limit memory use;

@@ -69,10 +69,21 @@ self-regression check records agreement with a prior result from this solver.
 | `plate.thin-q4-navier-31.v1` | The 0.005 m thick square on an 8 × 8 mesh. The same comparison exposes about 98.90% error. This negative benchmark remains ineligible for an accuracy pass if its observed error changes. |
 | `plate.thin-q4-snapshot.v1` | Center deflection of the same thin case, compared with the rounded FE value in the [validation record](validation.md) at relative tolerance `1e-8`. Passing this check leaves the solve unverified. |
 
-The plate records use a hard simply supported 1 m square with Young's modulus
-70 GPa, Poisson ratio 0.3, shear factor 5/6 and uniform pressure 1000 Pa.
-Other plate inputs, including clamped edges, can be solved within the existing
-solver's domain and remain unverified by this registry.
+The plate records apply to `q4_full` and use a hard simply supported 1 m square
+with Young's modulus 70 GPa, Poisson ratio 0.3, shear factor 5/6 and uniform
+pressure 1000 Pa. Other Q4 inputs within the solver's domain remain unverified
+by this registry.
+
+An automatic `mitc4_rectangle` report checks the equilibrium residual and
+returns `solved_unverified` after a successful solve. Explicit Q4 references
+return `not_applicable` for MITC4. Its independent convergence results are in
+the [validation record](validation.md).
+
+The report stays at schema 1.0. Implicit and explicit `q4_full` produce the
+original `reissner_mindlin_q4_full` fingerprint inputs. The nested `model`
+dictionary omits the default formulation for those inputs. For MITC4 the
+top-level identifier is `reissner_mindlin_mitc4_rectangle` and the nested model
+contains `formulation="mitc4_rectangle"`.
 
 The beam reference integrates the Euler–Bernoulli equation and uses force
 and moment equilibrium. The independent plate reference minimizes continuous

@@ -12,6 +12,9 @@ Preserve mathematical attribution and describe limitations accurately.
 Run `python -m pytest` and include convergence evidence for numerical changes.
 Do not replace an analytical reference with results of the code being tested.
 
+See the [release policy](docs/release-policy.md) for the file inventory,
+candidate evidence, supported Python interfaces and release verification.
+
 ## Branches and pull requests
 
 1. Start each change from the latest `origin/develop` on its own

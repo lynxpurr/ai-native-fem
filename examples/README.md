@@ -1,25 +1,24 @@
 # Reproducible examples
 
-Install the v0.1.0a2 wheel from GitHub Releases in a fresh virtual environment.
-Download the matching source archive from the maintenance commit containing these
-examples (they are not included in the original a2 archives), or use a checkout
-of that commit. Copy the entire examples directory outside the checkout.
-With that environment active, run from the copied directory:
+Build a wheel from this checkout with `python -m build`. Install the wheel in
+a fresh virtual environment and copy the entire examples directory outside
+the checkout. With that environment active, run from the copied directory.
 
 ```bash
 python beam.py
 python plate_convergence.py
+python plate_convergence.py --formulation mitc4_rectangle
 python plate_locking.py
 ```
 
 The scripts import the installed `anf` package and need no pytest or plotting
 dependency. CSV output uses SI units and independently calculated references.
-The cantilever tip displacement is approximately 0.0126984127 m. The thick plate
-errors decrease from 16.20% to 4.62% to 1.20%. The thin plate error remains 98.90%:
-successful execution of that example confirms a known limitation.
+The cantilever tip displacement is approximately 0.0126984127 m. The thick Q4
+plate errors decrease from 16.20% to 4.62% to 1.20%. The thin MITC4 plate converges
+below 3% on 16 × 16. The separate thin Q4 example reproduces 98.90% error from
+shear locking.
 
-The plate series uses odd modes through 31, as in docs/validation.md. It models
-hard simple support; it is not a universal reference for other boundary data.
-Small floating-point differences are expected. Each script checks its stated
-behavior and exits unsuccessfully if it changes. These examples do not establish
-engineering suitability.
+The Q4 examples use odd modes through index 31. The MITC4 example uses modes
+through index 255. Both series represent hard simple support. Small floating-point
+differences are expected. See the [validation record](../docs/validation.md) for
+the tested cases and their limits.
