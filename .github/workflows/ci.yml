@@ -24,27 +24,13 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: ${{ matrix.python }}
-      - name: Install test tooling
-        run: python -m pip install ".[test]"
-      - name: Build wheel and source distribution
-        run: python -m build
-      - name: Install the built wheel
-        shell: bash
-        run: python -m pip install --force-reinstall --no-deps dist/*.whl
-      - name: Test the installed wheel outside the checkout
-        shell: bash
-        run: |
-          test_dir="$(mktemp -d)"
-          cp -R tests "$test_dir/tests"
-          cp -R examples "$test_dir/examples"
-          cd "$test_dir"
-          python - <<'PY'
-          import os
-          from pathlib import Path
-          import anf
-          assert not Path(anf.__file__).resolve().is_relative_to(Path(os.environ["GITHUB_WORKSPACE"]))
-          PY
-          python -m pytest -q tests
-          python examples/beam.py
-          python examples/plate_convergence.py
-          python examples/plate_locking.py
+      - name: Install build tooling
+        run: python -m pip install "build>=1.2,<2"
+      - name: Build, verify and test both packages
+        run: python .github/workflows/release-evidence.py build dist
+      - name: Upload verified packages and evidence
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-evidence-${{ matrix.os }}-${{ matrix.python }}-${{ github.run_attempt }}
+          path: dist/
+          if-no-files-found: error
