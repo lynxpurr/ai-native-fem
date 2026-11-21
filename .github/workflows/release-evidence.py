@@ -2,6 +2,7 @@
 
 import argparse
 import base64
+from configparser import ConfigParser
 import csv
 import hashlib
 import io
@@ -167,6 +168,14 @@ def package_metadata(data, project):
         require(sorted(metadata.get_all(name, [])) == expected, f"Package metadata differs: {name}")
 
 
+def script_metadata(data, scripts):
+    parser = ConfigParser(interpolation=None)
+    parser.optionxform = str
+    parser.read_string(data.decode("utf-8"))
+    require(parser.sections() == ["console_scripts"] and not parser.defaults()
+            and dict(parser["console_scripts"]) == scripts, "Console scripts differ from pyproject.")
+
+
 def sha256(path):
     require(path.stat().st_size <= MAX_ARCHIVE_BYTES, f"Asset exceeds size limit: {path.name}")
     with path.open("rb") as stream:
@@ -185,6 +194,9 @@ def verify_release(wheel, sdist, source, source_files, project):
     wheel_expected = {name: source_files[name] for name in groups["package"]}
     wheel_expected.update({f"{dist_info}/licenses/{name}": source_files[name] for name in groups["licenses"]})
     wheel_expected.update({f"{dist_info}/{name}": None for name in ("METADATA", "WHEEL", "top_level.txt", "RECORD")})
+    scripts = project.get("scripts", {})
+    if scripts:
+        wheel_expected[f"{dist_info}/entry_points.txt"] = None
     wheel_contents = archive_files(wheel, wheel_expected)
     wheel_record(wheel_contents, f"{dist_info}/RECORD")
     tags = BytesParser().parsebytes(wheel_contents[f"{dist_info}/WHEEL"])
@@ -200,7 +212,12 @@ def verify_release(wheel, sdist, source, source_files, project):
         f"{egg_info}/{name}": None
         for name in ("PKG-INFO", "SOURCES.txt", "dependency_links.txt", "requires.txt", "top_level.txt")
     })
+    if scripts:
+        sdist_expected[f"{egg_info}/entry_points.txt"] = None
     sdist_contents = archive_files(sdist, sdist_expected)
+    if scripts:
+        script_metadata(wheel_contents[f"{dist_info}/entry_points.txt"], scripts)
+        script_metadata(sdist_contents[f"{egg_info}/entry_points.txt"], scripts)
     for data in (
         wheel_contents[f"{dist_info}/METADATA"], sdist_contents[f"{stem}/PKG-INFO"],
         sdist_contents[f"{egg_info}/PKG-INFO"],
