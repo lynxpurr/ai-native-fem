@@ -40,7 +40,8 @@ does not establish source rights. See the
 The base installation uses NumPy 2.x and includes the Python and CLI
 workflows. The `mcp` extra installs the MCP Python SDK and AnyIO to enable the
 stdio server. The `test` extra supplies pytest and build tooling. These
-dependencies are installed separately. Retain their applicable license files
+dependencies and the optional SciPy backend are installed separately.
+Retain their applicable license files
 when redistributing a complete environment. See [NOTICE](../NOTICE).
 List API and report-schema migration instructions in the release notes when
 behavior changes. The verification guide documents the preserved default Q4
@@ -55,8 +56,9 @@ its own clean environment outside the checkout. The jobs run the installed
 test suite and four beam and plate example commands. The suite exercises
 the planar structure declarations, F1–F4 cases, and result inspection
 through the installed Python, CLI and MCP entry points. The jobs exercise the
-MCP extra, and the dependency-advisory workflow audits the resolved test and
-MCP dependencies. After the installation checks pass, each job uploads both
+MCP extra. The suite first runs without SciPy, then each installation checks
+the sparse path with the extra enabled. The dependency-advisory workflow
+audits the resolved test, MCP and sparse dependencies. After the checks pass, each job uploads both
 packages, `SHA256SUMS` and `release-manifest.json`. The manifest records the
 commit, tree, version, checked paths, package hashes, installed dependencies
 and CI run and attempt. For pull requests, it also records the base and

@@ -8,7 +8,8 @@ from itertools import pairwise
 
 import numpy as np
 
-from ._linear import MAX_RELATIVE_RESIDUAL, checked_arithmetic, strain_energy
+from ._linear import MAX_RELATIVE_RESIDUAL, UnstableStiffnessError, checked_arithmetic, strain_energy
+from .assembly import DenseAssembly
 from .elements import Frame2D, Truss2D
 from .joints import _JointedFrame, _connections, _spring_stiffness
 from .model import _SI, _STRUCTURE, ModelValidationError, _choice, _count, _fields, _number, _pointer, _positive
@@ -320,9 +321,10 @@ def _residual(matrix, displacement, rhs, rotational, length):
 
 
 @checked_arithmetic
-def _solve(model, nodal, member_line=None):
+def _solve(model, nodal, member_line=None, *, sparse=None):
     mesh = model.mesh
-    stiffness = np.zeros((mesh.dof_count, mesh.dof_count))
+    assembly = (DenseAssembly(mesh.dof_count) if sparse is None else
+                sparse.assembly(mesh.dof_count, 36 * len(mesh.segments)))
     force = np.zeros(mesh.dof_count)
     displacement = np.zeros_like(force)
     reactions = np.zeros_like(force)
@@ -369,9 +371,10 @@ def _solve(model, nodal, member_line=None):
         elif local is not None:
             force[dofs] += element.transformation().T @ local
         block = element.stiffness()
-        stiffness[np.ix_(dofs, dofs)] += block
+        assembly.add(dofs, block)
         contributions.append((segment, dofs, element, local, block))
 
+    stiffness = assembly.finish() if sparse is None else sparse.assembled(assembly)
     fixed = []
     for name, row in model.model["supports"].items():
         for component, value in row.items():
@@ -381,15 +384,22 @@ def _solve(model, nodal, member_line=None):
     free = np.setdiff1d(np.arange(mesh.dof_count), fixed)
     residual = 0.0
     if free.size:
-        matrix = stiffness[np.ix_(free, free)]
-        rhs = force[free] - stiffness[np.ix_(free, fixed)] @ displacement[fixed]
-        displacement[free] = _equilibrate(matrix, rhs)
+        if sparse is None:
+            matrix = stiffness[np.ix_(free, free)]
+            rhs = force[free] - stiffness[np.ix_(free, fixed)] @ displacement[fixed]
+            displacement[free] = _equilibrate(matrix, rhs)
+        else:
+            matrix = stiffness[free, :][:, free]
+            coupling = stiffness[free, :][:, fixed]
+            rhs = force[free] - coupling @ displacement[fixed]
+            displacement[free] = sparse.solve(matrix, rhs, structural=True)
         rotational = np.isin(free, [dofs[2] for dofs in mesh.node_dofs if len(dofs) == 3])
         residual = _residual(matrix, displacement[free], rhs, rotational, mesh.longest_member)
         if not math.isfinite(residual) or residual > MAX_RELATIVE_RESIDUAL:
             raise StructureSolveError("relative_residual_exceeded",
                                       "free-DOF relative residual exceeds 1e-8")
-    reactions[fixed] = (stiffness @ displacement - force)[fixed]
+    internal = stiffness @ displacement
+    reactions[fixed] = (internal - force)[fixed]
     segment_energies = []
     for segment, dofs, element, local, block in contributions:
         motion = displacement[dofs]
@@ -413,12 +423,34 @@ def _solve(model, nodal, member_line=None):
             if rotations is not None:
                 end_rotations[frame_indices[segment.member], 1] = rotations[1]
 
-    energy = math.fsum(segment_energies) if has_joints else strain_energy(stiffness, displacement)
-    if not all(np.isfinite(array).all() for array in (force, stiffness, displacement, reactions, end_actions)):
+    stiffness_values = stiffness if sparse is None else stiffness.data
+    if not all(np.isfinite(array).all() for array in
+               (force, stiffness_values, displacement, reactions, end_actions)):
         raise ArithmeticError("non-finite structure result")
+    if sparse is None:
+        energy = math.fsum(segment_energies) if has_joints else strain_energy(stiffness, displacement)
+    else:
+        energy = _check_sparse_work(displacement, internal, force, reactions, fixed)
+        if free.size:
+            gap = matrix @ displacement[free] - rhs
+            sparse.measure_balance(matrix, gap, rhs, displacement[free], rotational, mesh.longest_member)
+        else:
+            sparse.zero_balance()
     if not math.isfinite(energy) or (end_rotations is not None and not np.isfinite(end_rotations).all()):
         raise ArithmeticError("non-finite rotation or strain energy")
     return StructureResult(mesh, displacement, reactions, end_actions, energy, residual, end_rotations)
+
+
+def _check_sparse_work(displacement, internal, force, reactions, fixed):
+    stored_twice = float(displacement @ internal)
+    external_work = float(displacement @ force + displacement[fixed] @ reactions[fixed])
+    if not math.isfinite(stored_twice) or not math.isfinite(external_work):
+        raise ArithmeticError("non-finite structural work or strain energy")
+    scale = max(abs(stored_twice), abs(external_work))
+    tolerance = 1e-10 if scale <= 1e-10 else 1e-8 * scale
+    if abs(stored_twice - external_work) > tolerance:
+        raise UnstableStiffnessError("structural work and strain energy disagree")
+    return stored_twice / 2
 
 
 def solve_structure(model):
@@ -428,11 +460,13 @@ def solve_structure(model):
     return _solve_structure(model, model.loads["nodal"])
 
 
-def _solve_structure(model, nodal, member_line=None):
+def _solve_structure(model, nodal, member_line=None, *, sparse=None):
     try:
-        return _solve(model, nodal, member_line)
+        return _solve(model, nodal, member_line, sparse=sparse)
     except StructureSolveError:
         raise
+    except UnstableStiffnessError as error:
+        raise StructureSolveError("unstable_or_ill_conditioned", str(error)) from error
     except (ArithmeticError, ValueError) as error:
         raise StructureSolveError("numerical_range", str(error)) from error
 

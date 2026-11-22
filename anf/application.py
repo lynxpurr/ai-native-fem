@@ -7,10 +7,10 @@ from types import MappingProxyType
 import numpy as np
 
 from .artifacts import LoadCaseResults, ResultBundle, _DTYPE, _case_result, _result_arrays
-from .beam import Beam, solve_cantilever
+from .beam import Beam, _solve_cantilever, solve_cantilever
 from .loads import _case_hash, _request, _resolve_cases
-from .model import ModelValidationError, _fields, _physical_inputs, validate_load_case_model, validate_model
-from .plate import solve_plate
+from .model import ModelValidationError, _choice, _fields, _physical_inputs, validate_load_case_model, validate_model
+from .plate import _solve_plate, solve_plate
 from .recovery import _section_arrays
 from .structures import StructureSolveError, _solve_structure, solve_structure
 from .verification import (_CLASSICAL_REFERENCES, _STRUCTURE_REFERENCE, _describe_case, _failed,
@@ -20,8 +20,10 @@ from .verification import (_CLASSICAL_REFERENCES, _STRUCTURE_REFERENCE, _describ
 def run_analysis(model, options=None):
     """Solve a declaration once and return its result, diagnostics and verification report."""
     model = validate_model(model)
-    options = _fields({} if options is None else options, "/options", (), {"reference": None})
+    options = _fields({} if options is None else options, "/options", (),
+                      {"reference": None, "backend": "dense"})
     reference = options["reference"]
+    backend = _choice(options["backend"], "/options/backend", ("dense", "scipy"), "unsupported_backend")
     structural = model.schema_version == "1.1"
     references = (_STRUCTURE_REFERENCE.id,) if structural else _CLASSICAL_REFERENCES
     if reference is not None and (not isinstance(reference, str) or reference not in references):
@@ -29,24 +31,27 @@ def run_analysis(model, options=None):
                                    "expected null or a registered ID for this model schema"
                                    if structural else "expected null or an ID from REFERENCE_REGISTRY")
 
+    sparse = _sparse_backend() if backend == "scipy" else None
     if structural:
         inputs = _physical_inputs(model)
         try:
-            result = solve_structure(model)
+            result = (solve_structure(model) if sparse is None else
+                      _solve_structure(model, model.loads["nodal"], sparse=sparse))
         except StructureSolveError as error:
             result = None
             report = _structure_report(model, inputs, reference, failure=error)
         else:
             report = _structure_report(model, inputs, reference, result=result)
     else:
-        result, report = _run_classical(model, reference)
+        result, report = _run_classical(model, reference, sparse=sparse)
 
     versions = _versions()
+    execution = None if sparse is None else sparse.metrics
     if report.solve_status == "numerical_failure":
-        return ResultBundle(model, report, reference, versions, {})
+        return ResultBundle(model, report, reference, versions, {}, execution=execution)
 
     return ResultBundle(model, report, reference, versions, _result_arrays(result),
-                        result.strain_energy, result.relative_residual)
+                        result.strain_energy, result.relative_residual, execution=execution)
 
 
 def run_load_cases(model, *, ids=None, stations=None):
@@ -83,11 +88,26 @@ def _versions():
     return {"anf": package, "python": platform.python_version(), "numpy": np.__version__}
 
 
-def _run_classical(model, reference):
+def _sparse_backend():
+    try:
+        from .backends.scipy import SparseSolve
+    except ImportError as error:
+        raise ModelValidationError(
+            "/options/backend", "backend_unavailable",
+            "the scipy backend requires the ai-native-fem[sparse] extra",
+        ) from error
+    return SparseSolve()
+
+
+def _run_classical(model, reference, *, sparse=None):
     inputs = input_parameters(model.model, **model.loads)
     solver = solve_cantilever if type(model.model) is Beam else solve_plate
     try:
-        result = solver(model.model, **model.loads)
+        if sparse is None:
+            result = solver(model.model, **model.loads)
+        else:
+            sparse_solver = _solve_cantilever if type(model.model) is Beam else _solve_plate
+            result = sparse_solver(model.model, **model.loads, sparse=sparse)
     except (ArithmeticError, ValueError) as error:
         input_hash, scope = _describe_case(inputs)
         result = None

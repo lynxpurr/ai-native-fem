@@ -184,6 +184,7 @@ class ResultBundle:
     arrays: Mapping[str, np.ndarray]
     strain_energy: float | None = None
     relative_residual: float | None = None
+    execution: Mapping[str, str | int | float] | None = None
 
     def __post_init__(self):
         model = validate_model(self.model)
@@ -194,6 +195,8 @@ class ResultBundle:
         object.__setattr__(self, "versions", versions)
         object.__setattr__(self, "strain_energy", energy)
         object.__setattr__(self, "relative_residual", residual)
+        if self.execution is not None:
+            object.__setattr__(self, "execution", MappingProxyType(dict(self.execution)))
 
         layout = _array_layout(model) if self.solve_status == "solved" else {}
         object.__setattr__(self, "arrays", _validated_arrays(self.arrays, layout))

@@ -8,6 +8,10 @@ import numpy as np
 MAX_RELATIVE_RESIDUAL = 1.0e-8
 
 
+class UnstableStiffnessError(ArithmeticError):
+    """The free stiffness could not be confirmed to be stable."""
+
+
 def checked_arithmetic(function):
     """Turn arithmetic range failures into a consistent diagnostic."""
     @wraps(function)
@@ -55,6 +59,13 @@ def strain_energy(stiffness, displacement):
     return value
 
 
+def relative_residual(gap, rhs):
+    scale = float(np.max(np.abs(rhs), initial=0.0))
+    if scale == 0:
+        return math.inf if np.any(gap) else 0.0
+    return float(np.linalg.norm(gap / scale) / np.linalg.norm(rhs / scale))
+
+
 @checked_arithmetic
 def eliminate(stiffness, force, fixed):
     """Solve zero prescribed DOFs, rejecting non-finite or unbalanced results.
@@ -86,11 +97,7 @@ def eliminate(stiffness, force, fixed):
     imbalance = stiffness @ displacement - force
     if not np.isfinite(imbalance).all():
         raise ArithmeticError("non-finite force balance")
-    scale = float(np.max(np.abs(force[free]), initial=0.0))
-    if scale == 0:
-        residual = 0.0 if not np.any(imbalance[free]) else math.inf
-    else:
-        residual = float(np.linalg.norm(imbalance[free]/scale) / np.linalg.norm(force[free]/scale))
+    residual = relative_residual(imbalance[free], force[free])
     if not math.isfinite(residual) or residual > MAX_RELATIVE_RESIDUAL:
         raise ArithmeticError("free-DOF relative residual exceeds 1e-8")
     reactions = np.zeros(force.size)

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from math import isfinite
 import numpy as np
 from ._linear import checked_arithmetic, count, eliminate, finite, positive, strain_energy
+from .assembly import DenseAssembly
 
 
 _SIGNS_X = np.array([-1, 1, 1, -1])
@@ -125,15 +126,20 @@ def plate_element(model: Plate, width, height):
     return stiffness, unit_load
 
 
-@checked_arithmetic
 def solve_plate(model: Plate, *, pressure):
     """Uniform pressure on a rectangle with zero boundary displacement data."""
+    return _solve_plate(model, pressure=pressure)
+
+
+@checked_arithmetic
+def _solve_plate(model, *, pressure, sparse=None):
     if not isinstance(model, Plate):
         raise TypeError("model must be a Plate")
     pressure = finite(pressure, "pressure")
     nx, ny = model.nx, model.ny
     size = 3*(nx+1)*(ny+1)
-    stiffness = np.zeros((size, size)); force = np.zeros(size)
+    assembly = DenseAssembly(size) if sparse is None else sparse.assembly(size, 144 * nx * ny)
+    force = np.zeros(size)
     width, height = model.lx/nx, model.ly/ny
     mitc4 = model.formulation == "mitc4_rectangle"
     if mitc4 and (width == 0 or height == 0):
@@ -147,7 +153,7 @@ def solve_plate(model: Plate, *, pressure):
             nodes = np.array([j*(nx+1)+i, j*(nx+1)+i+1,
                               (j+1)*(nx+1)+i+1, (j+1)*(nx+1)+i])
             dofs = (3*nodes[:, None]+np.arange(3)).ravel()
-            stiffness[np.ix_(dofs, dofs)] += local
+            assembly.add(dofs, local)
             force[dofs] += local_load
     fixed = set()
     for j in range(ny+1):
@@ -162,7 +168,14 @@ def solve_plate(model: Plate, *, pressure):
             else:
                 if on_x: fixed.add(3*node+2)
                 if on_y: fixed.add(3*node+1)
-    displacement, reactions, residual = eliminate(stiffness, force, sorted(fixed))
+    if sparse is None:
+        stiffness = assembly.finish()
+        displacement, reactions, residual = eliminate(stiffness, force, sorted(fixed))
+    else:
+        stiffness = sparse.assembled(assembly)
+        displacement, reactions, residual = sparse.eliminate_classical(
+            stiffness, force, sorted(fixed), stride=3, length=max(model.lx, model.ly),
+        )
     values = displacement.reshape(ny+1, nx+1, 3)
     energy = strain_energy(stiffness, displacement)
     if mitc4 and pressure != 0 and energy <= 0:
