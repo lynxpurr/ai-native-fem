@@ -35,10 +35,26 @@ class Truss2D:
     def _axial_coefficient(self):
         return positive(self.axial_rigidity / self.length, "axial stiffness")
 
+    def transformation(self):
+        return np.array([[self.cosine, self.sine, 0, 0],
+                         [0, 0, self.cosine, self.sine]])
+
+    @checked_arithmetic
+    def local_line_load(self, i, j):
+        """Integrate a linear axial line load at the two end nodes."""
+        a, b = i[0], j[0]
+        return self.length * np.array([a / 3 + b / 6, a / 6 + b / 3])
+
     @checked_arithmetic
     def end_actions(self, displacement):
         tension = self._axial_coefficient() * (self._direction() @ displacement)
         return np.array([[-tension, 0, 0], [tension, 0, 0]])
+
+    def _loaded_end_actions(self, displacement, local_load):
+        actions = self.end_actions(displacement)
+        if local_load is not None:
+            actions[:, 0] -= local_load
+        return actions
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -93,9 +109,26 @@ class Frame2D(Truss2D):
         return np.array([0, force, moment, 0, force, -moment])
 
     @checked_arithmetic
+    def local_line_load(self, i, j):
+        """Integrate axial and transverse linear loads in the local basis."""
+        axial_i, axial_j = super().local_line_load(i, j)
+        a, b = i[1], j[1]
+        h = self.length
+        transverse = h * np.array([0.35 * a + 0.15 * b, 0.15 * a + 0.35 * b])
+        moments = h * (h * np.array([a / 20 + b / 30, -a / 30 - b / 20]))
+        return np.array([axial_i, transverse[0], moments[0],
+                         axial_j, transverse[1], moments[1]])
+
+    @checked_arithmetic
     def end_actions(self, displacement, transverse=0.0):
+        return self._loaded_end_actions(displacement, self.local_load(transverse))
+
+    def _loaded_end_actions(self, displacement, local_load):
         local = self.transformation() @ displacement
-        return (self.local_stiffness() @ local - self.local_load(transverse)).reshape(2, 3)
+        actions = self.local_stiffness() @ local
+        if local_load is not None:
+            actions -= local_load
+        return actions.reshape(2, 3)
 
 
 def hermite_displacement(fraction, length, transverse_dofs):

@@ -2,14 +2,17 @@
 
 from importlib.metadata import PackageNotFoundError, version
 import platform
+from types import MappingProxyType
 
 import numpy as np
 
-from .artifacts import ResultBundle, _result_arrays
+from .artifacts import LoadCaseResults, ResultBundle, _DTYPE, _case_result, _result_arrays
 from .beam import Beam, solve_cantilever
-from .model import ModelValidationError, _fields, _physical_inputs, validate_model
+from .loads import _case_hash, _request, _resolve_cases
+from .model import ModelValidationError, _fields, _physical_inputs, validate_load_case_model, validate_model
 from .plate import solve_plate
-from .structures import StructureSolveError, solve_structure
+from .recovery import _section_arrays
+from .structures import StructureSolveError, _solve_structure, solve_structure
 from .verification import (_CLASSICAL_REFERENCES, _STRUCTURE_REFERENCE, _describe_case, _failed,
                            _structure_report, evaluate_checks, input_parameters)
 
@@ -38,16 +41,46 @@ def run_analysis(model, options=None):
     else:
         result, report = _run_classical(model, reference)
 
-    try:
-        package = version("ai-native-fem")
-    except PackageNotFoundError:
-        package = "uninstalled"
-    versions = {"anf": package, "python": platform.python_version(), "numpy": np.__version__}
+    versions = _versions()
     if report.solve_status == "numerical_failure":
         return ResultBundle(model, report, reference, versions, {})
 
     return ResultBundle(model, report, reference, versions, _result_arrays(result),
                         result.strain_energy, result.relative_residual)
+
+
+def run_load_cases(model, *, ids=None, stations=None):
+    """Solve selected static cases and combinations in a schema 1.2 declaration."""
+    model = validate_load_case_model(model)
+    ids, stations = _request(model, ids, stations)
+    cases = [(name, kind, effective, _case_hash(model, effective))
+             for name, kind, effective in _resolve_cases(model, ids)]
+    results = {}
+    for name, kind, effective, fingerprint in cases:
+        diagnostic = None
+        arrays, energy, residual = {}, None, None
+        try:
+            value = _solve_structure(model, effective.nodal, effective.member_line)
+            sections = _section_arrays(model, value, effective.member_line, stations)
+        except StructureSolveError as error:
+            diagnostic = (error.code, str(error))
+        except ArithmeticError as error:
+            diagnostic = ("numerical_range", str(error))
+        else:
+            arrays = _result_arrays(value)
+            arrays.update({key: np.asarray(array, dtype=_DTYPE) for key, array in sections.items()})
+            energy, residual = value.strain_energy, value.relative_residual
+        results[name] = _case_result(model, stations, name, kind, fingerprint, arrays, energy,
+                                     residual, diagnostic)
+    return LoadCaseResults(model, stations, MappingProxyType(_versions()), MappingProxyType(results))
+
+
+def _versions():
+    try:
+        package = version("ai-native-fem")
+    except PackageNotFoundError:
+        package = "uninstalled"
+    return {"anf": package, "python": platform.python_version(), "numpy": np.__version__}
 
 
 def _run_classical(model, reference):

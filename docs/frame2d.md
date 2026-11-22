@@ -6,6 +6,8 @@ prismatic `frame2d` member combines axial response with Euler–Bernoulli
 bending. A model has one static load set and small displacements. This
 formulation assumes rigid frame joints and neglects shear deformation.
 
+For multiple load sets on one structure, see [load cases and combinations](load-cases.md).
+
 ## Run a model
 
 The [cantilever](../examples/structures/cantilever.json) has a 2 m frame

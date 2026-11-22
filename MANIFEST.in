@@ -7,3 +7,4 @@ recursive-include examples/studies *.json
 recursive-include examples/structures *.json
 include schemas/model-v1.json schemas/result-v1.json
 include schemas/model-v1.1.json schemas/result-v1.1.json
+include schemas/model-v1.2.json schemas/load-case-results-v1.2.json
