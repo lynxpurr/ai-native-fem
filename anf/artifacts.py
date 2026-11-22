@@ -20,8 +20,9 @@ import zlib
 import numpy as np
 
 from .beam import Beam, BeamResult
-from .model import ModelSpec, _JSON_LIMIT, _decode_json, _fields, _number, validate_model
-from .verification import VerificationReport, _describe_case, input_parameters
+from .model import ModelSpec, _JSON_LIMIT, _decode_json, _fields, _number, _physical_inputs, validate_model
+from .structures import DISPLACEMENTS, FORCES, StructureResult
+from .verification import VerificationReport, _describe_case
 
 
 _ZIP_LIMIT = 64 * 1024 * 1024
@@ -45,6 +46,22 @@ class ArtifactError(ValueError):
 
 
 def _array_layout(model):
+    if model.mesh is not None:
+        mesh = model.mesh
+        nodes = (len(mesh.node_order),)
+        rotations = (len(mesh.frame_node_order),)
+        ends = (len(mesh.member_order), 2)
+        layout = {
+            "node_ux": (nodes, "node", "m"), "node_uy": (nodes, "node", "m"),
+            "reaction_fx": (nodes, "node", "N"), "reaction_fy": (nodes, "node", "N"),
+            "member_end_axial": (ends, "member_end", "N"),
+            "member_end_shear": (ends, "member_end", "N"),
+            "member_end_moment": (ends, "member_end", "N·m"),
+        }
+        if rotations[0]:
+            layout.update(node_rz=(rotations, "frame_node", "rad"),
+                          reaction_mz=(rotations, "frame_node", "N·m"))
+        return layout
     if type(model.model) is Beam:
         points = (model.model.elements + 1,)
         return {
@@ -69,6 +86,17 @@ def _array_layout(model):
 
 
 def _result_arrays(result):
+    if isinstance(result, StructureResult):
+        dofs = result.mesh.node_dofs
+        arrays = {}
+        for index, (component, reaction) in enumerate(zip(DISPLACEMENTS, FORCES, strict=True)):
+            indices = [row[index] for row in dofs if len(row) > index]
+            if indices:
+                arrays[f"node_{component}"] = result.displacement[indices]
+                arrays[f"reaction_{reaction}"] = result.reactions[indices]
+        for index, name in enumerate(("axial", "shear", "moment")):
+            arrays[f"member_end_{name}"] = result.member_end_actions[..., index]
+        return {name: np.asarray(array, dtype=_DTYPE) for name, array in arrays.items()}
     arrays = {"x": result.x, "deflection": result.deflection}
     if isinstance(result, BeamResult):
         arrays.update(slope=result.slope, root_force=result.root_reaction[:1],
@@ -87,15 +115,19 @@ def _array_metadata(layout):
 
 
 def _diagnostics(report):
-    code = "numerical_failure" if report.solve_status == "numerical_failure" else "verification_warning"
+    code = report.diagnostic_code or (
+        "numerical_failure" if report.solve_status == "numerical_failure" else "verification_warning"
+    )
     return tuple({"code": code, "message": warning} for warning in report.warnings)
 
 
 def _validate_context(model, report, reference, versions, energy, residual):
-    inputs = input_parameters(model.model, **model.loads)
+    inputs = _physical_inputs(model)
     fingerprint, scope = _describe_case(inputs)
     ids = () if reference is None else (reference,)
     if (not isinstance(report, VerificationReport)
+            or model.schema_version != report.schema_version
+            or report.input_status != "valid"
             or (report.input_hash, report.scope, report.reference_ids) != (fingerprint, scope, ids)):
         raise ArtifactError("report does not match the model and reference")
     versions = _fields(versions, "/versions", ("anf", "python", "numpy"))
@@ -147,6 +179,15 @@ class ResultBundle:
         object.__setattr__(self, "arrays", MappingProxyType(arrays))
 
     @property
+    def schema_version(self):
+        return self.model.schema_version
+
+    @property
+    def ordering(self):
+        """Model-derived node and member ordering for a planar structure."""
+        return self.model.mesh.ordering() if self.model.mesh is not None else None
+
+    @property
     def input_hash(self):
         return self.report.input_hash
 
@@ -168,8 +209,8 @@ class ResultBundle:
 
 
 def _manifest(result, digest):
-    return {
-        "schema_version": "1.0",
+    manifest = {
+        "schema_version": result.schema_version,
         "model": result.model.to_dict(),
         "input_hash": result.input_hash,
         "solve_status": result.solve_status,
@@ -183,13 +224,27 @@ def _manifest(result, digest):
         "arrays": result.array_metadata,
         "arrays_sha256": digest,
     }
+    if result.ordering is not None:
+        manifest["ordering"] = result.ordering
+    return manifest
 
 
 def _read_manifest(path):
-    manifest = _fields(_decode_json(_read_regular(path, _JSON_LIMIT)), "", _ROOT_FIELDS)
-    if manifest["schema_version"] != "1.0":
+    data = _decode_json(_read_regular(path, _JSON_LIMIT))
+    version = data.get("schema_version") if isinstance(data, Mapping) else None
+    if version not in ("1.0", "1.1"):
         raise ArtifactError("unsupported result schema")
+    fields = (*_ROOT_FIELDS, "ordering") if version == "1.1" else _ROOT_FIELDS
+    manifest = _fields(data, "", fields)
     model = validate_model(manifest["model"])
+    if version != model.schema_version:
+        raise ArtifactError("result schema does not match its model schema")
+    if model.mesh is not None:
+        ordering = manifest["ordering"]
+        if (ordering != model.mesh.ordering()
+                or any(type(node[2]) is not Decimal
+                       for node in ordering["node_order"] + ordering["frame_node_order"] if len(node) == 3)):
+            raise ArtifactError("structure ordering does not match the model")
     if _json_numbers(manifest["model"]) != model.to_dict():
         raise ArtifactError("manifest model must have all normalized fields")
     # The report's own reader verifies its check schema, state and reference IDs.
