@@ -50,7 +50,7 @@ def run_analysis(model, options=None):
 
 
 def run_load_cases(model, *, ids=None, stations=None):
-    """Solve selected static cases and combinations in a schema 1.2 declaration."""
+    """Solve selected static cases and combinations in a schema 1.2 or 1.3 declaration."""
     model = validate_load_case_model(model)
     ids, stations = _request(model, ids, stations)
     cases = [(name, kind, effective, _case_hash(model, effective))

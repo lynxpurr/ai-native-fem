@@ -105,6 +105,8 @@ def _result_arrays(result):
                 arrays[f"reaction_{reaction}"] = result.reactions[indices]
         for index, name in enumerate(("axial", "shear", "moment")):
             arrays[f"member_end_{name}"] = result.member_end_actions[..., index]
+        if result.frame_member_end_rotation is not None:
+            arrays["frame_member_end_rotation"] = result.frame_member_end_rotation
         return {name: np.asarray(array, dtype=_DTYPE) for name, array in arrays.items()}
     arrays = {"x": result.x, "deflection": result.deflection}
     if isinstance(result, BeamResult):
@@ -564,7 +566,7 @@ class LoadCaseResult:
 
 @dataclass(frozen=True, slots=True, eq=False)
 class LoadCaseResults:
-    """A schema 1.2 request and its selected outcomes in ASCII ID order."""
+    """A load case request and its selected outcomes in ASCII ID order."""
 
     model: ModelSpec
     stations: tuple
@@ -573,7 +575,7 @@ class LoadCaseResults:
 
     @property
     def schema_version(self):
-        return "1.2"
+        return self.model.schema_version
 
     @property
     def selected_ids(self):
@@ -601,6 +603,10 @@ def _case_layout(model, stations):
     shape = (len(model.mesh.member_order), len(stations))
     layout.update({f"member_section_{name}": (shape, "member_station", unit)
                    for name, unit in SECTION_UNITS.items()})
+    if model.schema_version == "1.3":
+        frames = sum(member["kind"] == "frame2d" for member in model.model["members"].values())
+        if frames:
+            layout["frame_member_end_rotation"] = ((frames, 2), "frame_member_end", "rad")
     return layout
 
 
@@ -625,7 +631,7 @@ def _case_path(index):
 
 
 def save_load_case_results(batch, root, name):
-    """Create root/name exclusively and publish the complete 1.2 index last."""
+    """Create root/name exclusively and publish the complete batch index last."""
     if not isinstance(batch, LoadCaseResults):
         raise TypeError("expected LoadCaseResults from run_load_cases or load_load_case_results")
     _safe_name(name)
@@ -705,15 +711,15 @@ def _read_case_entry(entry, directory, index, layout, budget):
 
 
 def load_load_case_results(directory):
-    """Load a complete schema 1.2 index and verify all selected outcomes."""
+    """Load a complete batch index and verify all selected outcomes."""
     directory = Path(directory)
     try:
         _require_directory(directory)
         manifest = _fields(_decode_json(_read_regular(directory / _MANIFEST, _BATCH_LIMIT), _BATCH_LIMIT),
                            "", _BATCH_FIELDS)
-        if manifest["schema_version"] != "1.2":
-            raise ArtifactError("expected schema 1.2 for the index and model")
         model = validate_load_case_model(manifest["model"])
+        if manifest["schema_version"] != model.schema_version:
+            raise ArtifactError("load case index schema does not match the model")
         if _json_numbers(manifest["model"]) != model.to_dict():
             raise ArtifactError("index model must have all normalized fields")
         ids, stations = _request(model, manifest["selected_ids"], manifest["stations"])
