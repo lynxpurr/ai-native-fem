@@ -116,12 +116,19 @@ def _components(entries, path, nodes, frame_nodes, components, *, supports=False
     return normalized
 
 
-def _structure(parameters, loads):
+def _structure(parameters, loads, version):
     parameters = _fields(parameters, "/model", ("nodes", "members", "supports"))
     nodes = _nodes(parameters["nodes"])
     members, frame_nodes = _members(parameters["members"], nodes)
     supports = _components(parameters["supports"], "/model/supports", nodes, frame_nodes,
                            DISPLACEMENTS, supports=True)
+    model = {"nodes": nodes, "members": members, "supports": supports}
+    if version == "1.2":
+        from .loads import _load_definitions
+
+        mesh = _mesh(nodes, members, frame_nodes, original_axis=True)
+        return model, _load_definitions(loads, nodes, members, frame_nodes), mesh
+
     loads = _fields(loads, "/loads", (), {"nodal": {}, "uniform_transverse": {}})
     nodal = _components(loads["nodal"], "/loads/nodal", nodes, frame_nodes, FORCES)
     uniform = {}
@@ -133,7 +140,6 @@ def _structure(parameters, loads):
         number = _continuous(value, path)
         if number:
             uniform[name] = number
-    model = {"nodes": nodes, "members": members, "supports": supports}
     return model, {"nodal": nodal, "uniform_transverse": uniform}, _mesh(nodes, members, frame_nodes)
 
 
@@ -174,7 +180,7 @@ class StructureMesh:
         }
 
 
-def _mesh(nodes, members, frame_nodes):
+def _mesh(nodes, members, frame_nodes, *, original_axis=False):
     segment_count = sum(member["elements"] for member in members.values())
     generated = segment_count - len(members)
     node_count = len(nodes) + generated
@@ -192,7 +198,8 @@ def _mesh(nodes, members, frame_nodes):
         count = member["elements"]
         start, end = nodes[i], nodes[j]
         path = f"/model/members/{name}"
-        longest = max(longest, _geometry(start, end, path)[0])
+        length, cosine, sine = _geometry(start, end, path)
+        longest = max(longest, length)
         indices = [node_indices[i]]
         for step in range(1, count):
             fraction = step / count
@@ -203,6 +210,10 @@ def _mesh(nodes, members, frame_nodes):
         indices.append(node_indices[j])
         for index, (left, right) in enumerate(pairwise(indices)):
             geometry = _geometry(coordinates[left], coordinates[right], path)
+            if original_axis:
+                # A straight member's physical subdivisions follow its original axis.
+                # Rounded display coordinates can drift off that line at large offsets.
+                geometry = (length / count, cosine, sine)
             segments.append(_Segment(name, index, (left, right), geometry))
 
     frame_order = tuple(key for key in node_order if key[0] == "generated" or key[1] in frame_nodes)
@@ -292,7 +303,7 @@ def _residual(matrix, displacement, rhs, rotational, length):
 
 
 @checked_arithmetic
-def _solve(model):
+def _solve(model, nodal, member_line=None):
     mesh = model.mesh
     stiffness = np.zeros((mesh.dof_count, mesh.dof_count))
     force = np.zeros(mesh.dof_count)
@@ -302,7 +313,7 @@ def _solve(model):
 
     node_indices = {key[1]: index for index, key in enumerate(mesh.node_order) if key[0] == "input"}
     member_indices = {name: index for index, name in enumerate(mesh.member_order)}
-    for name, row in model.loads["nodal"].items():
+    for name, row in nodal.items():
         for component, value in row.items():
             force[mesh.node_dofs[node_indices[name]][FORCES.index(component)]] = value
 
@@ -313,11 +324,21 @@ def _solve(model):
         is_frame = isinstance(element, Frame2D)
         width = 3 if is_frame else 2
         dofs = np.array([dof for node in segment.nodes for dof in mesh.node_dofs[node][:width]])
-        transverse = model.loads["uniform_transverse"].get(segment.member, 0.0)
+        local = None
+        if member_line is None and is_frame:
+            local = element.local_load(model.loads["uniform_transverse"].get(segment.member, 0.0))
+        elif member_line is not None and segment.member in member_line:
+            first, last = member_line[segment.member]
+            count = member["elements"]
+            ends = [
+                tuple((1 - fraction) * a + fraction * b for a, b in zip(first, last, strict=True))
+                for fraction in (segment.index / count, (segment.index + 1) / count)
+            ]
+            local = element.local_line_load(*ends)
         stiffness[np.ix_(dofs, dofs)] += element.stiffness()
-        if is_frame:
-            force[dofs] += element.transformation().T @ element.local_load(transverse)
-        contributions.append((segment, dofs, element, transverse))
+        if local is not None:
+            force[dofs] += element.transformation().T @ local
+        contributions.append((segment, dofs, element, local))
 
     fixed = []
     for name, row in model.model["supports"].items():
@@ -337,9 +358,8 @@ def _solve(model):
             raise StructureSolveError("relative_residual_exceeded",
                                       "free-DOF relative residual exceeds 1e-8")
     reactions[fixed] = (stiffness @ displacement - force)[fixed]
-    for segment, dofs, element, transverse in contributions:
-        actions = (element.end_actions(displacement[dofs], transverse) if isinstance(element, Frame2D)
-                   else element.end_actions(displacement[dofs]))
+    for segment, dofs, element, local in contributions:
+        actions = element._loaded_end_actions(displacement[dofs], local)
         index = member_indices[segment.member]
         if segment.index == 0:
             end_actions[index, 0] = actions[0]
@@ -355,9 +375,13 @@ def _solve(model):
 def solve_structure(model):
     """Solve a validated planar-structure ModelSpec with the dense backend."""
     if model.schema_version != "1.1":
-        raise ValueError("solve_structure requires a planar structure declaration")
+        raise ValueError("solve_structure requires a schema 1.1 planar structure declaration")
+    return _solve_structure(model, model.loads["nodal"])
+
+
+def _solve_structure(model, nodal, member_line=None):
     try:
-        return _solve(model)
+        return _solve(model, nodal, member_line)
     except StructureSolveError:
         raise
     except (ArithmeticError, ValueError) as error:

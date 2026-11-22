@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.2",
+  "problem_type": "planar_structure",
+  "units": {"length": "m", "force": "N", "stress": "Pa"},
+  "analysis": {"type": "static"},
+  "model": {
+    "nodes": {"base": [0, 0], "tip": [2, 0]},
+    "members": {
+      "beam": {
+        "kind": "frame2d",
+        "i": "base",
+        "j": "tip",
+        "young_modulus": 200000000000,
+        "area": 0.01,
+        "second_moment": 0.000001,
+        "elements": 4
+      }
+    },
+    "supports": {"base": {"ux": 0, "uy": 0, "rz": 0}}
+  },
+  "loads": {
+    "cases": {
+      "gravity": {"self_weight": {"acceleration": [0, -10], "density": {"beam": 2500}}},
+      "service": {
+        "nodal": {"tip": {"fy": -200}},
+        "member_line": {"beam": {"basis": "global", "i": [0, -40], "j": [0, -120]}}
+      }
+    },
+    "combinations": {"combined": {"gravity": 1, "service": 1.5}}
+  }
+}

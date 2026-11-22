@@ -19,10 +19,14 @@ import zlib
 
 import numpy as np
 
+from ._linear import MAX_RELATIVE_RESIDUAL
 from .beam import Beam, BeamResult
-from .model import ModelSpec, _JSON_LIMIT, _decode_json, _fields, _number, _physical_inputs, validate_model
+from .loads import _case_hash, _request, _request_hash, _resolve_cases
+from .model import (ModelSpec, _JSON_LIMIT, _decode_json, _fields, _number, _physical_inputs,
+                    validate_load_case_model, validate_model)
+from .recovery import SECTION_UNITS, _envelope, _envelope_status
 from .structures import DISPLACEMENTS, FORCES, StructureResult
-from .verification import VerificationReport, _describe_case
+from .verification import VerificationReport, _STRUCTURE_FAILURES, _describe_case
 
 
 _ZIP_LIMIT = 64 * 1024 * 1024
@@ -33,6 +37,11 @@ _HEADER_LIMIT = 10 * 1024
 _DTYPE = np.dtype("<f8")
 _MANIFEST = "manifest.json"
 _ARRAYS = "arrays.npz"
+_BATCH_LIMIT = 4 * _JSON_LIMIT
+_BATCH_FIELDS = ("schema_version", "model", "request_hash", "selected_ids", "stations",
+                 "ordering", "versions", "envelope_status", "results")
+_CASE_FIELDS = ("id", "kind", "input_hash", "solve_status", "verification_status", "diagnostics",
+                "strain_energy", "relative_residual", "arrays", "arrays_path", "arrays_sha256")
 _ROOT_FIELDS = ("schema_version", "model", "input_hash", "solve_status", "verification_status",
                 "versions", "reference", "report", "diagnostics", "strain_energy",
                 "relative_residual", "arrays", "arrays_sha256")
@@ -114,6 +123,26 @@ def _array_metadata(layout):
             for name, (shape, position, unit) in layout.items()}
 
 
+def _validated_arrays(arrays, layout):
+    if not isinstance(arrays, Mapping) or arrays.keys() != layout.keys():
+        raise ArtifactError("array names do not match the model and solve status")
+    validated = {}
+    for name, (shape, _, _) in layout.items():
+        array = arrays[name]
+        if (not isinstance(array, np.ndarray) or array.dtype != _DTYPE
+                or array.shape != shape or not np.isfinite(array).all()):
+            raise ArtifactError(f"invalid result array: {name}")
+        validated[name] = np.frombuffer(array.tobytes(order="C"), dtype=_DTYPE).reshape(shape)
+    return MappingProxyType(validated)
+
+
+def _validated_versions(versions):
+    versions = _fields(versions, "/versions", ("anf", "python", "numpy"))
+    if any(not isinstance(value, str) or not value.strip() for value in versions.values()):
+        raise ArtifactError("versions must be nonempty strings")
+    return MappingProxyType(versions)
+
+
 def _diagnostics(report):
     code = report.diagnostic_code or (
         "numerical_failure" if report.solve_status == "numerical_failure" else "verification_warning"
@@ -130,9 +159,7 @@ def _validate_context(model, report, reference, versions, energy, residual):
             or report.input_status != "valid"
             or (report.input_hash, report.scope, report.reference_ids) != (fingerprint, scope, ids)):
         raise ArtifactError("report does not match the model and reference")
-    versions = _fields(versions, "/versions", ("anf", "python", "numpy"))
-    if any(not isinstance(value, str) or not value.strip() for value in versions.values()):
-        raise ArtifactError("versions must be nonempty strings")
+    versions = _validated_versions(versions)
     if report.solve_status == "solved":
         energy = _number(energy, "/strain_energy")
         residual = _number(residual, "/relative_residual")
@@ -162,21 +189,12 @@ class ResultBundle:
             model, self.report, self.reference, self.versions, self.strain_energy, self.relative_residual
         )
         object.__setattr__(self, "model", model)
-        object.__setattr__(self, "versions", MappingProxyType(versions))
+        object.__setattr__(self, "versions", versions)
         object.__setattr__(self, "strain_energy", energy)
         object.__setattr__(self, "relative_residual", residual)
 
         layout = _array_layout(model) if self.solve_status == "solved" else {}
-        if not isinstance(self.arrays, Mapping) or self.arrays.keys() != layout.keys():
-            raise ArtifactError("array names do not match the model and solve status")
-        arrays = {}
-        for name, (shape, _, _) in layout.items():
-            array = self.arrays[name]
-            if (not isinstance(array, np.ndarray) or array.dtype != _DTYPE
-                    or array.shape != shape or not np.isfinite(array).all()):
-                raise ArtifactError(f"invalid result array: {name}")
-            arrays[name] = np.frombuffer(array.tobytes(order="C"), dtype=_DTYPE).reshape(shape)
-        object.__setattr__(self, "arrays", MappingProxyType(arrays))
+        object.__setattr__(self, "arrays", _validated_arrays(self.arrays, layout))
 
     @property
     def schema_version(self):
@@ -240,11 +258,7 @@ def _read_manifest(path):
     if version != model.schema_version:
         raise ArtifactError("result schema does not match its model schema")
     if model.mesh is not None:
-        ordering = manifest["ordering"]
-        if (ordering != model.mesh.ordering()
-                or any(type(node[2]) is not Decimal
-                       for node in ordering["node_order"] + ordering["frame_node_order"] if len(node) == 3)):
-            raise ArtifactError("structure ordering does not match the model")
+        _check_ordering(model, manifest["ordering"])
     if _json_numbers(manifest["model"]) != model.to_dict():
         raise ArtifactError("manifest model must have all normalized fields")
     # The report's own reader verifies its check schema, state and reference IDs.
@@ -273,6 +287,13 @@ def _read_manifest(path):
     if not layout and digest is not None:
         raise ArtifactError("numerical failure cannot have an array digest")
     return manifest, model, report, layout
+
+
+def _check_ordering(model, ordering):
+    if (ordering != model.mesh.ordering()
+            or any(type(node[2]) is not Decimal
+                   for node in ordering["node_order"] + ordering["frame_node_order"] if len(node) == 3)):
+        raise ArtifactError("structure ordering does not match the model")
 
 
 def _json_numbers(value):
@@ -402,14 +423,15 @@ def _member_payload(data, member, offset):
     return payload
 
 
-def _read_arrays(data, layout):
+def _read_arrays(data, layout, expanded_limit=_EXPANDED_LIMIT):
     directory = _zip_directory(data)
     names = {f"{name}.npy": shape for name, (shape, _, _) in layout.items()}
     with ZipFile(BytesIO(data)) as archive:
         members = archive.infolist()
         if len(members) != len(names) or {item.orig_filename for item in members} != names.keys():
             raise ArtifactError("unexpected or duplicate ZIP members")
-        if sum(item.file_size for item in members) > _EXPANDED_LIMIT:
+        expanded = sum(item.file_size for item in members)
+        if expanded > expanded_limit:
             raise ArtifactError("ZIP exceeds its expanded byte budget")
         for member in members:
             kind = stat.S_IFMT(member.external_attr >> 16)
@@ -424,11 +446,12 @@ def _read_arrays(data, layout):
                 raise ArtifactError("NPY member exceeds its model-derived budget")
             with archive.open(member) as stream:
                 _read_header(stream, shape, member.file_size)
-        return {
+        arrays = {
             member.filename[:-4]: np.load(BytesIO(_member_payload(data, member, start)),
                                           allow_pickle=False, max_header_size=_HEADER_LIMIT)
             for member, start in _member_offsets(data, members, directory)
         }
+        return arrays, expanded
 
 
 def _safe_name(name):
@@ -444,6 +467,26 @@ def _flush(stream):
     os.fsync(stream.fileno())
 
 
+def _write_arrays(path, arrays):
+    with path.open("xb") as stream:
+        with ZipFile(stream, "w", compression=ZIP_DEFLATED, allowZip64=False) as archive:
+            for key, value in arrays.items():
+                with archive.open(f"{key}.npy", "w") as member:
+                    np.lib.format.write_array(member, value, version=(1, 0), allow_pickle=False)
+        _flush(stream)
+    return sha256(_read_regular(path, _ZIP_LIMIT)).hexdigest()
+
+
+def _publish_manifest(directory, payload, limit):
+    if len(payload) > limit:
+        raise ArtifactError("manifest exceeds its byte budget")
+    pending = directory / ".manifest.tmp"
+    with pending.open("xb") as stream:
+        stream.write(payload)
+        _flush(stream)
+    pending.replace(directory / _MANIFEST)
+
+
 def save_result(result, root, name):
     """Create root/name exclusively and publish its complete manifest last."""
     if not isinstance(result, ResultBundle):
@@ -454,24 +497,9 @@ def save_result(result, root, name):
         _require_directory(root)
         directory = root / name
         directory.mkdir(mode=0o700)
-        digest = None
-        if result.arrays:
-            arrays = directory / _ARRAYS
-            with arrays.open("xb") as stream:
-                with ZipFile(stream, "w", compression=ZIP_DEFLATED, allowZip64=False) as archive:
-                    for key, value in result.arrays.items():
-                        with archive.open(f"{key}.npy", "w") as member:
-                            np.lib.format.write_array(member, value, version=(1, 0), allow_pickle=False)
-                _flush(stream)
-            digest = sha256(_read_regular(arrays, _ZIP_LIMIT)).hexdigest()
+        digest = _write_arrays(directory / _ARRAYS, result.arrays) if result.arrays else None
         payload = (json.dumps(_manifest(result, digest), allow_nan=False, indent=2) + "\n").encode("utf-8")
-        if len(payload) > _JSON_LIMIT:
-            raise ArtifactError("manifest exceeds its byte budget")
-        pending = directory / ".manifest.tmp"
-        with pending.open("xb") as stream:
-            stream.write(payload)
-            _flush(stream)
-        pending.replace(directory / _MANIFEST)
+        _publish_manifest(directory, payload, _JSON_LIMIT)
         return directory
     except (OSError, ValueError) as error:
         if isinstance(error, ArtifactError):
@@ -494,7 +522,7 @@ def load_result(directory):
             data = _read_regular(directory / _ARRAYS, _ZIP_LIMIT)
             if sha256(data).hexdigest() != manifest["arrays_sha256"]:
                 raise ArtifactError("array digest does not match the manifest")
-            arrays = _read_arrays(data, layout)
+            arrays, _ = _read_arrays(data, layout)
         return ResultBundle(model, report, manifest["reference"], manifest["versions"], arrays,
                             manifest["strain_energy"], manifest["relative_residual"])
     except (OSError, ValueError, SyntaxError, TypeError, RuntimeError, EOFError,
@@ -502,3 +530,227 @@ def load_result(directory):
         if isinstance(error, ArtifactError):
             raise
         raise ArtifactError(f"invalid result artifact: {error}") from error
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class LoadCaseResult:
+    """The outcome and named SI arrays of one selected case or combination."""
+
+    id: str
+    kind: str
+    input_hash: str
+    member_order: tuple
+    stations: tuple
+    arrays: Mapping[str, np.ndarray]
+    strain_energy: float | None
+    relative_residual: float | None
+    _diagnostic: tuple[str, str] | None
+
+    @property
+    def solve_status(self):
+        return "solved" if self._diagnostic is None else "numerical_failure"
+
+    @property
+    def verification_status(self):
+        return "solved_unverified" if self._diagnostic is None else "not_run"
+
+    @property
+    def diagnostics(self):
+        if self._diagnostic is None:
+            return ()
+        code, message = self._diagnostic
+        return ({"code": code, "message": message},)
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class LoadCaseResults:
+    """A schema 1.2 request and its selected outcomes in ASCII ID order."""
+
+    model: ModelSpec
+    stations: tuple
+    versions: Mapping[str, str]
+    results: Mapping[str, LoadCaseResult]
+
+    @property
+    def schema_version(self):
+        return "1.2"
+
+    @property
+    def selected_ids(self):
+        return tuple(self.results)
+
+    @property
+    def request_hash(self):
+        return _request_hash(self.model, self.selected_ids, self.stations)
+
+    @property
+    def ordering(self):
+        return self.model.mesh.ordering()
+
+    @property
+    def envelope_status(self):
+        return _envelope_status(self.results)
+
+    @property
+    def envelope(self):
+        return _envelope(self)
+
+
+def _case_layout(model, stations):
+    layout = _array_layout(model)
+    shape = (len(model.mesh.member_order), len(stations))
+    layout.update({f"member_section_{name}": (shape, "member_station", unit)
+                   for name, unit in SECTION_UNITS.items()})
+    return layout
+
+
+def _case_result(model, stations, name, kind, input_hash, arrays, energy, residual, diagnostic=None):
+    if diagnostic is None:
+        energy = _number(energy, "/strain_energy")
+        residual = _number(residual, "/relative_residual")
+        if not 0 <= residual <= MAX_RELATIVE_RESIDUAL:
+            raise ArtifactError("invalid solved-case relative residual")
+    else:
+        code, message = diagnostic
+        if (code not in _STRUCTURE_FAILURES or not isinstance(message, str) or not message.strip()
+                or energy is not None or residual is not None):
+            raise ArtifactError("invalid failure diagnostics or measurements")
+    layout = _case_layout(model, stations) if diagnostic is None else {}
+    return LoadCaseResult(name, kind, input_hash, model.mesh.member_order, stations,
+                          _validated_arrays(arrays, layout), energy, residual, diagnostic)
+
+
+def _case_path(index):
+    return f"cases/{index:04d}/{_ARRAYS}"
+
+
+def save_load_case_results(batch, root, name):
+    """Create root/name exclusively and publish the complete 1.2 index last."""
+    if not isinstance(batch, LoadCaseResults):
+        raise TypeError("expected LoadCaseResults from run_load_cases or load_load_case_results")
+    _safe_name(name)
+    try:
+        root = Path(root).resolve(strict=True)
+        _require_directory(root)
+        directory = root / name
+        directory.mkdir(mode=0o700)
+        if batch.envelope_status != "not_available":
+            (directory / "cases").mkdir(mode=0o700)
+        entries = []
+        layout = _case_layout(batch.model, batch.stations)
+        for index, result in enumerate(batch.results.values()):
+            relative_path, digest, metadata = None, None, {}
+            if result.solve_status == "solved":
+                relative_path = _case_path(index)
+                path = directory / relative_path
+                path.parent.mkdir(mode=0o700)
+                digest = _write_arrays(path, result.arrays)
+                metadata = _array_metadata(layout)
+            entries.append({
+                "id": result.id, "kind": result.kind, "input_hash": result.input_hash,
+                "solve_status": result.solve_status, "verification_status": result.verification_status,
+                "diagnostics": list(result.diagnostics), "strain_energy": result.strain_energy,
+                "relative_residual": result.relative_residual, "arrays": metadata,
+                "arrays_path": relative_path, "arrays_sha256": digest,
+            })
+        manifest = {
+            "schema_version": batch.schema_version, "model": batch.model.to_dict(),
+            "request_hash": batch.request_hash, "selected_ids": batch.selected_ids,
+            "stations": batch.stations, "ordering": batch.ordering, "versions": dict(batch.versions),
+            "envelope_status": batch.envelope_status, "results": entries,
+        }
+        payload = (json.dumps(manifest, allow_nan=False, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+        _publish_manifest(directory, payload, _BATCH_LIMIT)
+        return directory
+    except (OSError, ValueError) as error:
+        if isinstance(error, ArtifactError):
+            raise
+        raise ArtifactError(f"could not save load case results: {error}") from error
+
+
+def _check_entries(directory, expected):
+    _require_directory(directory)
+    with os.scandir(directory) as entries:
+        if {entry.name for entry in entries} != expected:
+            raise ArtifactError("unexpected or missing entry in the load case artifact")
+
+
+def _read_case_entry(entry, directory, index, layout, budget):
+    status = entry["solve_status"], entry["verification_status"]
+    if status == ("numerical_failure", "not_run"):
+        diagnostics = entry["diagnostics"]
+        if (entry["arrays_path"] is not None or entry["arrays_sha256"] is not None or entry["arrays"] != {}
+                or not isinstance(diagnostics, list) or len(diagnostics) != 1):
+            raise ArtifactError("failure entry requires one diagnostic and no arrays")
+        diagnostic = _fields(diagnostics[0], "/diagnostics/0", ("code", "message"))
+        return {}, (diagnostic["code"], diagnostic["message"]), budget
+
+    relative_path = _case_path(index)
+    digest = entry["arrays_sha256"]
+    if (status != ("solved", "solved_unverified") or entry["diagnostics"] != []
+            or entry["arrays_path"] != relative_path or entry["arrays"] != _array_metadata(layout)
+            or not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest)):
+        raise ArtifactError("invalid solved case status, array path or metadata")
+    for metadata in entry["arrays"].values():
+        if any(type(size) is not Decimal for size in metadata["shape"]):
+            raise ArtifactError("invalid array shape in load case index")
+    path = directory / relative_path
+    _require_directory(directory / "cases")
+    _check_entries(path.parent, {_ARRAYS})
+    data = _read_regular(path, _ZIP_LIMIT)
+    if sha256(data).hexdigest() != digest:
+        raise ArtifactError("array digest does not match the load case index")
+    arrays, expanded = _read_arrays(data, layout, budget)
+    return arrays, None, budget - expanded
+
+
+def load_load_case_results(directory):
+    """Load a complete schema 1.2 index and verify all selected outcomes."""
+    directory = Path(directory)
+    try:
+        _require_directory(directory)
+        manifest = _fields(_decode_json(_read_regular(directory / _MANIFEST, _BATCH_LIMIT), _BATCH_LIMIT),
+                           "", _BATCH_FIELDS)
+        if manifest["schema_version"] != "1.2":
+            raise ArtifactError("expected schema 1.2 for the index and model")
+        model = validate_load_case_model(manifest["model"])
+        if _json_numbers(manifest["model"]) != model.to_dict():
+            raise ArtifactError("index model must have all normalized fields")
+        ids, stations = _request(model, manifest["selected_ids"], manifest["stations"])
+        if (manifest["selected_ids"] != list(ids)
+                or _json_numbers(manifest["stations"]) != list(stations)
+                or manifest["request_hash"] != _request_hash(model, ids, stations)):
+            raise ArtifactError("request identity does not match the model, selected IDs and stations")
+        _check_ordering(model, manifest["ordering"])
+        versions = _validated_versions(manifest["versions"])
+        entries = manifest["results"]
+        if not isinstance(entries, list) or len(entries) != len(ids):
+            raise ArtifactError("result entries do not match the selected IDs")
+
+        layout = _case_layout(model, stations)
+        results, expected_children = {}, set()
+        budget = _EXPANDED_LIMIT
+        for index, ((name, kind, effective), entry) in enumerate(zip(_resolve_cases(model, ids), entries, strict=True)):
+            entry = _fields(entry, f"/results/{index}", _CASE_FIELDS)
+            fingerprint = _case_hash(model, effective)
+            if (entry["id"], entry["kind"], entry["input_hash"]) != (name, kind, fingerprint):
+                raise ArtifactError("case identity does not match the effective model loads")
+            arrays, diagnostic, budget = _read_case_entry(entry, directory, index, layout, budget)
+            if diagnostic is None:
+                expected_children.add(f"{index:04d}")
+            results[name] = _case_result(model, stations, name, kind, fingerprint, arrays,
+                                         entry["strain_energy"], entry["relative_residual"], diagnostic)
+        expected_root = {_MANIFEST}
+        if expected_children:
+            expected_root.add("cases")
+            _check_entries(directory / "cases", expected_children)
+        _check_entries(directory, expected_root)
+        batch = LoadCaseResults(model, stations, versions, MappingProxyType(results))
+        if batch.envelope_status != manifest["envelope_status"]:
+            raise ArtifactError("envelope status does not match the selected outcomes")
+        return batch
+    except (OSError, ValueError, SyntaxError, TypeError, RuntimeError, EOFError,
+            BadZipFile, struct.error, zlib.error) as error:
+        if isinstance(error, ArtifactError):
+            raise
+        raise ArtifactError(f"invalid load case artifact: {error}") from error

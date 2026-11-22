@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 from .beam import Beam
 from .plate import Plate
-from .verification import _describe_case, input_parameters
+from .verification import _describe_case, _json, input_parameters
 
 if TYPE_CHECKING:
     from .structures import StructureMesh
@@ -42,14 +42,14 @@ class _ObjectPairs(list):
     pass
 
 
-def _decode_json(payload):
+def _decode_json(payload, limit=_JSON_LIMIT):
     try:
-        if len(payload) > _JSON_LIMIT:
-            raise ModelValidationError("", "size_limit", "JSON is limited to 1 MiB")
+        if len(payload) > limit:
+            raise ModelValidationError("", "size_limit", f"JSON is limited to {limit // _JSON_LIMIT} MiB")
         if isinstance(payload, str):
             payload = payload.encode("utf-8")
-        if len(payload) > _JSON_LIMIT:
-            raise ModelValidationError("", "size_limit", "JSON is limited to 1 MiB")
+        if len(payload) > limit:
+            raise ModelValidationError("", "size_limit", f"JSON is limited to {limit // _JSON_LIMIT} MiB")
         value = json.loads(payload.decode("utf-8"), object_pairs_hook=_ObjectPairs,
                            parse_int=Decimal, parse_float=Decimal, parse_constant=Decimal)
         return _unique_objects(value)
@@ -181,12 +181,13 @@ class ModelSpec:
     loads: Mapping
     mesh: StructureMesh | None
 
-    def __init__(self, doc):
+    def __init__(self, doc, *, _versions=("1.0", "1.1")):
         if isinstance(doc, (str, bytes)):
             doc = _decode_json(doc)
         doc = _fields(doc, "", ("schema_version", "problem_type", "units", "model", "loads", "analysis"))
-        version = _choice(doc["schema_version"], "/schema_version", ("1.0", "1.1"), "unsupported_schema")
-        kinds = (_STRUCTURE,) if version == "1.1" else (_BEAM, _PLATE)
+        version = _choice(doc["schema_version"], "/schema_version", _versions,
+                          "unsupported_schema")
+        kinds = (_BEAM, _PLATE) if version == "1.0" else (_STRUCTURE,)
         kind = _choice(doc["problem_type"], "/problem_type", kinds, "unsupported_problem")
         units = _fields(doc["units"], "/units", _SI)
         for name, expected in _SI.items():
@@ -197,7 +198,7 @@ class ModelSpec:
         if kind == _STRUCTURE:
             from .structures import _structure
 
-            model, loads, mesh = _structure(doc["model"], doc["loads"])
+            model, loads, mesh = _structure(doc["model"], doc["loads"], version)
         else:
             model, loads = (_beam if kind == _BEAM else _plate)(doc["model"], doc["loads"])
             loads = {key: _number(value, f"/loads/{key}") for key, value in loads.items()}
@@ -206,6 +207,8 @@ class ModelSpec:
         object.__setattr__(self, "model", _freeze(model))
         object.__setattr__(self, "loads", _freeze(loads))
         object.__setattr__(self, "mesh", mesh)
+        if version == "1.2" and len(_json(self.to_dict()).encode("utf-8")) > _JSON_LIMIT:
+            raise ModelValidationError("", "size_limit", "normalized JSON is limited to 1 MiB")
 
     def to_dict(self):
         """Return the normalized JSON-compatible declaration."""
@@ -217,8 +220,20 @@ class ModelSpec:
 
 
 def validate_model(doc):
-    """Validate a mapping or UTF-8 JSON string/bytes, or accept a ModelSpec."""
-    return doc if type(doc) is ModelSpec else ModelSpec(doc)
+    """Validate a schema 1.0 or 1.1 single-solve declaration."""
+    return _validate_model(doc, ("1.0", "1.1"))
+
+
+def validate_load_case_model(doc):
+    """Validate a schema 1.2 declaration without solving the cases."""
+    return _validate_model(doc, ("1.2",))
+
+
+def _validate_model(doc, versions):
+    if type(doc) is not ModelSpec:
+        return ModelSpec(doc, _versions=versions)
+    _choice(doc.schema_version, "/schema_version", versions, "unsupported_schema")
+    return doc
 
 
 def _physical_inputs(model):
