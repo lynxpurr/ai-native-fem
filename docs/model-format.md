@@ -56,7 +56,8 @@ the thin Q4 locking case.
 
 ## Interpret the outcome
 
-`run_analysis` solves once. Omit `options` or set `reference` to null to
+`run_analysis` solves once. Use `backend="scipy"` in the options mapping to select
+the [optional sparse solver](sparse.md). Omit `options` or set `reference` to null to
 evaluate only the free-DOF residual. To compare against a reference, pass an ID
 from `anf.verification.REFERENCE_REGISTRY`. The input SHA-256 matches the
 existing verification report for the physical SI inputs. Key order and

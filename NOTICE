@@ -9,3 +9,7 @@ https://numpy.org/doc/stable/license.html
 
 This package does not redistribute a NumPy binary. If distributing a complete
 environment, retain the applicable license files for that environment.
+
+The optional sparse backend uses a separately installed SciPy distribution,
+which includes its BSD-3-Clause terms and bundled component notices:
+https://github.com/scipy/scipy/blob/main/LICENSE.txt
