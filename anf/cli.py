@@ -49,7 +49,7 @@ def _read_model(path):
 
 
 def _summary(result, path):
-    return {
+    summary = {
         "input_hash": result.input_hash,
         "artifact": str(path.absolute()),
         "solve_status": result.solve_status,
@@ -62,6 +62,9 @@ def _summary(result, path):
         "relative_residual": result.relative_residual,
         "arrays": result.array_metadata,
     }
+    if result.ordering is not None:
+        summary.update(schema_version=result.schema_version, ordering=result.ordering)
+    return summary
 
 
 def _dispatch(args):

@@ -1,0 +1,49 @@
+{
+  "schema_version": "1.1",
+  "problem_type": "planar_structure",
+  "units": {
+    "length": "m",
+    "force": "N",
+    "stress": "Pa"
+  },
+  "model": {
+    "nodes": {
+      "root": [
+        0,
+        0
+      ],
+      "tip": [
+        2,
+        0
+      ]
+    },
+    "members": {
+      "beam": {
+        "kind": "frame2d",
+        "i": "root",
+        "j": "tip",
+        "young_modulus": 210000000000,
+        "area": 0.01,
+        "second_moment": 0.000001,
+        "elements": 4
+      }
+    },
+    "supports": {
+      "root": {
+        "ux": 0,
+        "uy": 0,
+        "rz": 0
+      }
+    }
+  },
+  "loads": {
+    "nodal": {
+      "tip": {
+        "fy": -1000
+      }
+    }
+  },
+  "analysis": {
+    "type": "static"
+  }
+}

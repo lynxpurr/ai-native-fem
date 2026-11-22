@@ -14,11 +14,12 @@ from uuid import uuid4
 
 from .application import run_analysis
 from .artifacts import ArtifactError, _read_regular, _require_directory, load_result, save_result
-from .model import ModelValidationError, _BEAM, _JSON_LIMIT, _PLATE, _SI, _decode_json, _fields, _number
+from .model import ModelValidationError, _BEAM, _JSON_LIMIT, _PLATE, _SI, _STRUCTURE, _decode_json, _fields, _number
 from .model import canonical_input_hash, validate_model
 from .reporting import write_report
+from .structures import MAX_DOFS, MAX_MEMBER_ELEMENTS, MAX_NODES, MAX_SEGMENTS, _structure_model_schema
 from .studies import StudySpec, _MAX_MESHES, _MAX_OUTPUT_BYTES, _OBSERVABLES, _deflection, run_convergence
-from .verification import REFERENCE_REGISTRY
+from .verification import REFERENCE_REGISTRY, _CLASSICAL_REFERENCES, _STRUCTURE_REFERENCE
 
 
 _SUMMARY_LIMIT = 16 * 1024
@@ -66,7 +67,7 @@ def _model_schema():
         }],
     )
     return {
-        **_object({"schema_version": {"const": "1.0"}, "problem_type": {"enum": list(_OBSERVABLES)},
+        **_object({"schema_version": {"const": "1.0"}, "problem_type": {"enum": [_BEAM, _PLATE]},
                    "units": _object({key: {"const": unit} for key, unit in _SI.items()}),
                    "model": {"type": "object"}, "loads": {"type": "object"},
                    "analysis": _object({"type": {"const": "static"}})}),
@@ -78,15 +79,22 @@ def _model_schema():
 
 
 def _tool_schemas():
-    model = _model_schema()
-    reference = {"enum": [None, *REFERENCE_REGISTRY]}
+    classical = _model_schema()
+    model = {"type": "object", "oneOf": [classical, _structure_model_schema()]}
+    classical_reference = {"enum": [None, *_CLASSICAL_REFERENCES]}
+    solve = _object({"model": model, "reference": {"enum": [None, *REFERENCE_REGISTRY]}}, ("model",))
+    solve.update({
+        "if": {"properties": {"model": {"properties": {"schema_version": {"const": "1.1"}}}}},
+        "then": {"properties": {"reference": {"enum": [None, _STRUCTURE_REFERENCE.id]}}},
+        "else": {"properties": {"reference": classical_reference}},
+    })
     meshes = {"type": "array", "minItems": 1, "maxItems": _MAX_MESHES, "items": {"oneOf": [
         _object({"elements": {"type": "integer", "minimum": 1, "maximum": 200}}),
         _object({axis: {"type": "integer", "minimum": 2, "maximum": 199} for axis in ("nx", "ny")}),
     ]}}
     study = _object({
-        "model": model, "meshes": meshes, "observable": {"enum": list(_OBSERVABLES.values())},
-        "reference": reference, "failure_policy": {"enum": ["stop", "record_and_continue"]},
+        "model": classical, "meshes": meshes, "observable": {"enum": list(_OBSERVABLES.values())},
+        "reference": classical_reference, "failure_policy": {"enum": ["stop", "record_and_continue"]},
         "max_solves": {"type": "integer", "minimum": 1, "maximum": _MAX_MESHES},
         "max_output_bytes": {"type": "integer", "minimum": 1, "maximum": _MAX_OUTPUT_BYTES},
         "base_model_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
@@ -96,10 +104,10 @@ def _tool_schemas():
         "validate_model": ("Validate a static SI declaration and compute its fingerprint.",
                            _object({"model": model})),
         "solve_model": ("Run one solve and return a result summary and local artifact ID.",
-                        _object({"model": model, "reference": reference}, ("model",))),
+                        solve),
         "convergence_study": ("Run an explicit mesh sequence and save the study with its results.",
                               _object({"study": study})),
-        "inspect_artifact": ("Read a result or study by its ID in the configured workspace.",
+        "inspect_artifact": ("Read a schema 1.0 or 1.1 result or a schema 1.0 study by local artifact ID.",
                              _object({"artifact_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"}})),
     }
 
@@ -107,6 +115,7 @@ def _tool_schemas():
 def _capabilities(timeout):
     return {
         "model_schema": "1.0", "result_schema": "1.0", "study_schema": "1.0",
+        "model_schemas": ["1.0", "1.1"], "result_schemas": ["1.0", "1.1"],
         "analysis_types": ["static"], "units": dict(_SI),
         "problems": {
             "cantilever_bending": {"formulations": ["euler_bernoulli_hermite"],
@@ -114,6 +123,11 @@ def _capabilities(timeout):
             "rectangular_plate": {"formulations": ["q4_full", "mitc4_rectangle"],
                                   "supports": ["clamped", "hard_simply_supported"],
                                   "mitc4_support": "hard_simply_supported", "max_dofs": 1800},
+            _STRUCTURE: {"model_schema": "1.1", "result_schema": "1.1",
+                         "formulations": ["truss2d", "frame2d"], "supports": ["ux", "uy", "rz"],
+                         "loads": ["nodal", "uniform_transverse"],
+                         "max_nodes": MAX_NODES, "max_segments": MAX_SEGMENTS, "max_dofs": MAX_DOFS,
+                         "max_frame_elements": MAX_MEMBER_ELEMENTS, "max_truss_elements": 1},
         },
         "observables": dict(_OBSERVABLES), "references": list(REFERENCE_REGISTRY),
         "limits": {"max_request_bytes": _JSON_LIMIT, "max_summary_bytes": _SUMMARY_LIMIT,
@@ -132,8 +146,11 @@ def _result_summary(result):
         "verification_status": result.verification_status, "relative_residual": result.relative_residual,
         "strain_energy": result.strain_energy, "diagnostics": list(result.diagnostics),
     }
+    if result.schema_version == "1.1":
+        summary["schema_version"] = result.schema_version
     if result.solve_status == "numerical_failure":
-        summary.update(_error("numerical_failure", "", result.diagnostics[0]["message"]))
+        diagnostic = result.diagnostics[0]
+        summary.update(_error(diagnostic["code"], "", diagnostic["message"]))
     return summary
 
 
