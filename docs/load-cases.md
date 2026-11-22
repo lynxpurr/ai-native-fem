@@ -1,6 +1,8 @@
 # Planar load cases and combinations
 
 Schema 1.2 runs several linear static load sets on the same planar structure.
+Schema 1.3 adds [frame end releases and rotational springs](frame-joints.md)
+through the same Python batch API.
 Use the [planar truss and frame model](frame2d.md) for nodes, members, supports
 and subdivision. Declare SI units and a static analysis in the
 [1.2 model schema](../schemas/model-v1.2.json).
@@ -88,8 +90,8 @@ effective nodal and local member loads. This lets a base case and a
 combination share a physical fingerprint when their effective loads agree.
 
 Use `run_analysis`, `save_result`, `load_result`, the CLI and the MCP tools
-for single-case schemas 1.0 and 1.1. Schema 1.2 uses the Python batch API
-shown above. The planar formulation assumes rigid frame connections.
+for single-case schemas 1.0 and 1.1. Use the Python batch API shown above
+for schemas 1.2 and 1.3. Frame connections in schema 1.2 are rigid.
 
 The line-load integration uses linear axial and cubic Hermite displacement
 shapes. Section forces follow equilibrium of the cut. [TU Delft element

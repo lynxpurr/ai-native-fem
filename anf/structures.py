@@ -10,6 +10,7 @@ import numpy as np
 
 from ._linear import MAX_RELATIVE_RESIDUAL, checked_arithmetic, strain_energy
 from .elements import Frame2D, Truss2D
+from .joints import _JointedFrame, _connections, _spring_stiffness
 from .model import _SI, _STRUCTURE, ModelValidationError, _choice, _count, _fields, _number, _pointer, _positive
 
 
@@ -59,7 +60,7 @@ def _known(name, entries, path, kind):
     return name
 
 
-def _members(entries, nodes):
+def _members(entries, nodes, *, jointed=False):
     members = {}
     connected = set()
     frame_nodes = set()
@@ -67,7 +68,10 @@ def _members(entries, nodes):
     for name, value in _named(entries, "/model/members", 1, MAX_SEGMENTS):
         path = f"/model/members/{name}"
         base = ("kind", "i", "j", "young_modulus", "area")
-        value = _fields(value, path, base, {"elements": 1, "second_moment": None})
+        defaults = {"elements": 1, "second_moment": None}
+        if jointed:
+            defaults["end_connections"] = {}
+        value = _fields(value, path, base, defaults)
         kind = _choice(value["kind"], f"{path}/kind", ("truss2d", "frame2d"),
                        "unsupported_element")
         i, j = (_known(value[end], nodes, f"{path}/{end}", "node") for end in ("i", "j"))
@@ -80,14 +84,19 @@ def _members(entries, nodes):
         connected.update(edge)
         is_frame = kind == "frame2d"
         fields = (*base, "second_moment") if is_frame else base
-        value = _fields(entries[name], path, fields, {"elements": 1})
+        options = {"elements": 1, "end_connections": {}} if jointed and is_frame else {"elements": 1}
+        value = _fields(entries[name], path, fields, options)
         for field in fields[3:]:
             value[field] = _positive(value[field], f"{path}/{field}")
         maximum = MAX_MEMBER_ELEMENTS if is_frame else 1
         value["elements"] = _count(value["elements"], f"{path}/elements", 1, maximum)
+        connections = _connections(value.pop("end_connections", {}), f"{path}/end_connections")
+        if connections:
+            value["end_connections"] = connections
         members[name] = value
         if is_frame:
-            frame_nodes.update(edge)
+            frame_nodes.update(value[end] for end in ("i", "j")
+                               if _spring_stiffness(connections.get(end)) != 0)
     for name in nodes:
         if name not in connected:
             raise ModelValidationError(f"/model/nodes/{name}", "isolated_node",
@@ -119,11 +128,11 @@ def _components(entries, path, nodes, frame_nodes, components, *, supports=False
 def _structure(parameters, loads, version):
     parameters = _fields(parameters, "/model", ("nodes", "members", "supports"))
     nodes = _nodes(parameters["nodes"])
-    members, frame_nodes = _members(parameters["members"], nodes)
+    members, frame_nodes = _members(parameters["members"], nodes, jointed=version == "1.3")
     supports = _components(parameters["supports"], "/model/supports", nodes, frame_nodes,
                            DISPLACEMENTS, supports=True)
     model = {"nodes": nodes, "members": members, "supports": supports}
-    if version == "1.2":
+    if version in ("1.2", "1.3"):
         from .loads import _load_definitions
 
         mesh = _mesh(nodes, members, frame_nodes, original_axis=True)
@@ -244,6 +253,7 @@ class StructureResult:
     member_end_actions: np.ndarray
     strain_energy: float
     relative_residual: float
+    frame_member_end_rotation: np.ndarray | None = None
 
 
 def _element(member, geometry):
@@ -253,6 +263,13 @@ def _element(member, geometry):
     if member["kind"] == "truss2d":
         return Truss2D(length, axial, c, s)
     return Frame2D(length, axial, c, s, bending_rigidity=young * member["second_moment"])
+
+
+def _end_stiffness(segment, member):
+    connections = member.get("end_connections", {})
+    i = connections.get("i") if segment.index == 0 else None
+    j = connections.get("j") if segment.index == member["elements"] - 1 else None
+    return _spring_stiffness(i), _spring_stiffness(j)
 
 
 @checked_arithmetic
@@ -313,6 +330,13 @@ def _solve(model, nodal, member_line=None):
 
     node_indices = {key[1]: index for index, key in enumerate(mesh.node_order) if key[0] == "input"}
     member_indices = {name: index for index, name in enumerate(mesh.member_order)}
+    frame_indices = {}
+    if model.schema_version == "1.3":
+        frame_indices = {name: index for index, name in enumerate(
+            name for name in mesh.member_order if model.model["members"][name]["kind"] == "frame2d"
+        )}
+    end_rotations = np.zeros((len(frame_indices), 2)) if frame_indices else None
+    has_joints = any("end_connections" in member for member in model.model["members"].values())
     for name, row in nodal.items():
         for component, value in row.items():
             force[mesh.node_dofs[node_indices[name]][FORCES.index(component)]] = value
@@ -323,7 +347,11 @@ def _solve(model, nodal, member_line=None):
         element = _element(member, segment.geometry)
         is_frame = isinstance(element, Frame2D)
         width = 3 if is_frame else 2
-        dofs = np.array([dof for node in segment.nodes for dof in mesh.node_dofs[node][:width]])
+        springs = _end_stiffness(segment, member)
+        dofs = np.array([
+            dof for node, spring in zip(segment.nodes, springs, strict=True)
+            for dof in mesh.node_dofs[node][:(2 if spring == 0 else width)]
+        ])
         local = None
         if member_line is None and is_frame:
             local = element.local_load(model.loads["uniform_transverse"].get(segment.member, 0.0))
@@ -335,10 +363,14 @@ def _solve(model, nodal, member_line=None):
                 for fraction in (segment.index / count, (segment.index + 1) / count)
             ]
             local = element.local_line_load(*ends)
-        stiffness[np.ix_(dofs, dofs)] += element.stiffness()
-        if local is not None:
+        if springs != (None, None):
+            element = _JointedFrame(element, springs, local)
+            force[dofs] += element.force()
+        elif local is not None:
             force[dofs] += element.transformation().T @ local
-        contributions.append((segment, dofs, element, local))
+        block = element.stiffness()
+        stiffness[np.ix_(dofs, dofs)] += block
+        contributions.append((segment, dofs, element, local, block))
 
     fixed = []
     for name, row in model.model["supports"].items():
@@ -358,18 +390,35 @@ def _solve(model, nodal, member_line=None):
             raise StructureSolveError("relative_residual_exceeded",
                                       "free-DOF relative residual exceeds 1e-8")
     reactions[fixed] = (stiffness @ displacement - force)[fixed]
-    for segment, dofs, element, local in contributions:
-        actions = element._loaded_end_actions(displacement[dofs], local)
+    segment_energies = []
+    for segment, dofs, element, local, block in contributions:
+        motion = displacement[dofs]
+        rotations = None
+        if isinstance(element, _JointedFrame):
+            actions, rotations, energy = element.response(motion)
+            segment_energies.append(float(energy))
+        else:
+            actions = element._loaded_end_actions(motion, local)
+            if segment.member in frame_indices:
+                rotations = motion[2::3]
+            if has_joints:
+                segment_energies.append(strain_energy(block, motion))
         index = member_indices[segment.member]
         if segment.index == 0:
             end_actions[index, 0] = actions[0]
+            if rotations is not None:
+                end_rotations[frame_indices[segment.member], 0] = rotations[0]
         if segment.index == model.model["members"][segment.member]["elements"] - 1:
             end_actions[index, 1] = actions[1]
+            if rotations is not None:
+                end_rotations[frame_indices[segment.member], 1] = rotations[1]
 
-    energy = strain_energy(stiffness, displacement)
+    energy = math.fsum(segment_energies) if has_joints else strain_energy(stiffness, displacement)
     if not all(np.isfinite(array).all() for array in (force, stiffness, displacement, reactions, end_actions)):
         raise ArithmeticError("non-finite structure result")
-    return StructureResult(mesh, displacement, reactions, end_actions, energy, residual)
+    if not math.isfinite(energy) or (end_rotations is not None and not np.isfinite(end_rotations).all()):
+        raise ArithmeticError("non-finite rotation or strain energy")
+    return StructureResult(mesh, displacement, reactions, end_actions, energy, residual, end_rotations)
 
 
 def solve_structure(model):

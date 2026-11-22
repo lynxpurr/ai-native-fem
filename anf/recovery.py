@@ -27,6 +27,8 @@ def _section_arrays(model, result, member_line, stations):
         values[index, :, :2] = -np.array([axial, shear]) - integrals
         load_moment = s * (((0.5 - xi / 6) * first[1] + (xi / 6) * last[1]) * s)
         values[index, :, 2] = -moment + s * shear + load_moment
+        if "end_connections" in member:
+            values[index, xi == 1] = result.member_end_actions[index, 1]
     return {f"member_section_{name}": values[..., index]
             for index, name in enumerate(SECTION_UNITS)}
 

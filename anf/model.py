@@ -207,7 +207,7 @@ class ModelSpec:
         object.__setattr__(self, "model", _freeze(model))
         object.__setattr__(self, "loads", _freeze(loads))
         object.__setattr__(self, "mesh", mesh)
-        if version == "1.2" and len(_json(self.to_dict()).encode("utf-8")) > _JSON_LIMIT:
+        if version in ("1.2", "1.3") and len(_json(self.to_dict()).encode("utf-8")) > _JSON_LIMIT:
             raise ModelValidationError("", "size_limit", "normalized JSON is limited to 1 MiB")
 
     def to_dict(self):
@@ -225,8 +225,8 @@ def validate_model(doc):
 
 
 def validate_load_case_model(doc):
-    """Validate a schema 1.2 declaration without solving the cases."""
-    return _validate_model(doc, ("1.2",))
+    """Validate a schema 1.2 or 1.3 declaration without solving the cases."""
+    return _validate_model(doc, ("1.2", "1.3"))
 
 
 def _validate_model(doc, versions):
