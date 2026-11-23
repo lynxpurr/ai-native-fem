@@ -1,8 +1,9 @@
 # Research roadmap
 
-The current package is a classical, isotropic beam/rectangular plate research
-baseline. The sections below record the capabilities by version and outline
-future research. See [CONTRIBUTING](../CONTRIBUTING.md) for contributions.
+The current package is a classical, isotropic beam, rectangular plate and
+planar structure research baseline. The sections below record the capabilities
+by version and outline future research. See
+[CONTRIBUTING](../CONTRIBUTING.md) for contributions.
 
 ## Maintenance iteration
 
@@ -29,6 +30,29 @@ SI model files and JSON/NPZ result artifacts from
 [Mesh convergence reports](convergence.md) record each mesh, reference
 comparison and failure for replay. The [optional local MCP server](mcp.md)
 exposes these operations over stdio.
+
+## Planar structures and research workflow in 0.1.0a5
+
+The [0.1.0a5 release notes](releases/0.1.0a5.md) add the R2 structural statics
+and research workflow:
+
+- Schema 1.1 planar truss and Euler–Bernoulli frame statics with dense
+  assembly, prescribed displacements, reactions and local member-end actions.
+- Schema 1.2 named load cases, self-weight, trapezoidal member loads and
+  explicit linear combinations, with member force envelopes.
+- Schema 1.3 frame end releases and rotational springs.
+- An optional SciPy sparse backend with the same fingerprints and verification
+  semantics as the dense solver.
+- Cantilever parameter grids and local finite-difference sensitivity with
+  checkpoint/resume and retained failures.
+- Native mesh documents for planar members and uniform rectangular plates,
+  plus deterministic line and rectangle generation. External mesh formats
+  remain unsupported.
+
+The CLI and MCP accept schema 1.0 and 1.1 single-solve declarations. Schema
+1.2/1.3 batch runs, parameter studies and native mesh import are Python
+interfaces. The package remains linear static: 3D frames, shear deformation,
+dynamics, buckling, nonlinear analysis, shells and solids are not included.
 
 ## Plate research
 

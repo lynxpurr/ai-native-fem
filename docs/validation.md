@@ -7,8 +7,9 @@ input normalization, load-scale-independent residuals, numeric range failures
 and rejection of non-finite or unbalanced solutions: 67 cases in total, passing
 in both Linux environments. CI builds distributions and
 runs tests against the installed wheel outside the checkout.
-This record covers this small prototype, not another development
-version of ANF. See [methods](methods.md) for equations and restrictions.
+This record covers the tested prototype and the 0.1.0a5 additions; it does not
+certify another development version of ANF. See [methods](methods.md) for
+equations and restrictions.
 
 The beam tests compare tip displacement, slope and root reactions against the
 integrated differential equation for tip and uniform loads on multiple meshes.
@@ -72,6 +73,55 @@ assumed shear and the exact bending energy within a relative tolerance of
 Gauss points so the thin-plate result is insensitive to cancellation between
 assembled shear stiffness entries.
 
-Uniform-pressure rectangles and one-plane cantilever bending are the only
-tested application families. The tests do not certify arbitrary inputs or
-engineering use. Dense assembly also restricts model size.
+## Planar structures, sparse and parameter studies
+
+Version 0.1.0a5 adds planar truss/frame statics, load cases, an optional sparse
+backend, cantilever parameter studies and native mesh input. The new checks use
+independent closed forms and the same residual gates as the existing solvers.
+
+- **Planar statics** ([`tests/test_frame2d.py`](../tests/test_frame2d.py)). A
+  2 m frame cantilever with `EI=210 kN·m²` and a `-1000 N` tip force matches
+  `w=PL³/(3EI)=-1.26984127e-2 m` and `theta=PL²/(2EI)=-9.52380952e-3 rad`,
+  with 1000 N root force and 2000 N·m root moment, at relative tolerance
+  `1e-8`. An axial bar chain, a simply supported beam under 500 N/m
+  (`5wL⁴/(384EI)=-1/120 m` at midspan) and a portal frame integrated by the
+  unit-load force method are checked at the same order. Rigid translation and
+  rotation, node renumbering, nonzero prescribed displacement and explicit
+  mechanism failure are separate cases. Mechanisms report
+  `unstable_or_ill_conditioned` and write no solved arrays.
+- **Load cases and joints** ([`tests/test_load_cases.py`](../tests/test_load_cases.py),
+  [`tests/test_joints.py`](../tests/test_joints.py)). Self-weight, a
+  trapezoidal member load and an explicit combination reproduce the closed-form
+  beam response; `member_forces` returns the expected axial, shear and moment
+  diagrams. The documented spring example gives 1125 N and 875 N vertical
+  reactions, a 500 N·m spring moment and zero moment at the released end.
+  Spring stiffness limits approach the released and rigid cases.
+- **Sparse** ([`tests/test_sparse_parity.py`](../tests/test_sparse_parity.py)).
+  Dense and SciPy results agree at relative tolerance `1e-8` (absolute `1e-6`
+  for force arrays and `1e-10` for displacement and rotation), with the same
+  input hash, ordering and verification status. The free-DOF relative residual
+  stays at most `1e-8`. Singular systems are reported, not regularized.
+- **Parameter studies** ([`tests/test_parameter_studies.py`](../tests/test_parameter_studies.py)).
+  The four analytic cantilever derivatives for `P`, `E`, `I` and `L` agree
+  within `5e-6` relative. Each sampled solve agrees with the analytic tip
+  deflection within `2e-9` relative and keeps the `1e-8` residual gate. The
+  tests execute 33 samples and four step ratios; incomplete stencils return an
+  unavailable result instead of zero.
+- **Native meshes** ([`tests/test_mesh_io_v1.py`](../tests/test_mesh_io_v1.py)).
+  Node renumbering, rigid translation and rotation, unit conversion and sparse
+  projection preserve the physical model and input hash. The rectangular MITC4
+  projection stays inside the existing 1% reference gate; the 2 m × 1 m,
+  0.01 m thick, 8 × 8 plate is 0.593% from the continuous reference, and the
+  thin Q4 locking case remains a failed comparison. Corrupt counts, duplicate
+  IDs, unknown cells, undefined sets and over-budget documents are rejected.
+
+The installation matrix runs without SciPy first and then with the `sparse`
+extra on Linux Python 3.11/3.12 and Windows 3.12. At this revision the base
+installation runs 412 tests with 30 sparse tests skipped; installing the extra
+runs 442 tests.
+
+Uniform-pressure rectangles, one-plane cantilever bending, planar truss/frame
+statics, cantilever parameter studies and the documented native mesh
+projections are the tested application families. The tests do not certify
+arbitrary inputs or engineering use. Dense assembly also restricts model size;
+the sparse backend does not remove the declared limits.
