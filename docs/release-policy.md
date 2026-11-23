@@ -35,6 +35,7 @@ does not establish source rights. See the
 | `anf.artifacts.save_result`, `load_result` | Write and read versioned result manifests and numeric NPZ arrays. [Result 1.0](model-format.md#read-or-save-a-result-directory) · [Result 1.1](frame2d.md#results-and-sign-convention) |
 | `anf validate`, `anf solve`, `anf inspect` | Validate a declaration, write a static analysis result and inspect an artifact from the installed command line. [CLI guide](cli.md) |
 | `anf.studies.StudySpec`, `run_convergence`, `anf.reporting.write_report` | Beam and plate mesh studies with replayable JSON, Markdown, SVG and per-mesh results. [Convergence guide](convergence.md) |
+| `anf.mesh_io.MeshDocument`, `import_mesh`, `validate_topology`, `anf.meshing.generate_supported_mesh` | Bounded native meshes, deterministic line/rectangle generation and explicit SI model bindings. [Native mesh guide](mesh-io.md) |
 | `anf.parameter_studies.ParameterGrid`, `run_parameter_study`, `finite_difference_sensitivity` | Cantilever parameter grids and local finite differences with checkpointed samples, JSON and SVG. [Parameter studies](parameter-studies.md) |
 | `anf-mcp --workspace PATH` | Optional local stdio server for capabilities, validation, solves, studies and artifact inspection. [MCP guide](mcp.md) |
 
