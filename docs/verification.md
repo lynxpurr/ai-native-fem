@@ -33,10 +33,12 @@ Use the model and loads that produced the result. The evaluator checks result
 dimensions, extents, finiteness and residual. The two `verify_*` helpers bind
 the report directly to the inputs they pass to the solver.
 
-## Reading schema 1.0
+## Reading schema 1.0 and 1.1
 
 | Field | Values and meaning |
 | --- | --- |
+| `schema_version` | `1.0` for classical beam and plate reports; `1.1` for planar structure reports |
+| `diagnostic_code` | Schema 1.1 only. The single structural failure code, or null when the solve completed |
 | `input_status` | `valid` or `invalid` |
 | `solve_status` | `solved`, `numerical_failure`, or `not_run` for invalid input |
 | `verification_status` | `verification_passed` when every required comparison for an eligible independent reference passes, `verification_failed` when an independent comparison fails, `solved_unverified` when independent accuracy remains unestablished, or `not_run` for an unsolved case |
@@ -65,6 +67,7 @@ self-regression check records agreement with a prior result from this solver.
 | ID | Observable and accuracy scope |
 | --- | --- |
 | `cantilever.closed-form.v1` | Tip deflection and slope, root force and moment for a constant-section, one-plane cantilever with a tip force and uniform line load. Relative tolerance is `1e-8`. When a reference is zero, use exact zero for zero contributions or scale absolute error by the largest contributing magnitude. |
+| `structure.cantilever-tip.v1` | Tip displacement and rotation, root force and moment for one `+x` `frame2d` member with a fixed i end, a free j end and a tip `fy` only. Relative tolerance is `1e-8`. The planar residual check uses `planar_structure.relative-residual.v1`. |
 | `plate.navier-31.v1` | Center deflection of the 0.2 m thick square on a 16 × 16 mesh. Relative error must be below 8%. |
 | `plate.thin-q4-navier-31.v1` | The 0.005 m thick square on an 8 × 8 mesh. The same comparison exposes about 98.90% error. This negative benchmark remains ineligible for an accuracy pass if its observed error changes. |
 | `plate.thin-q4-snapshot.v1` | Center deflection of the same thin case, compared with the rounded FE value in the [validation record](validation.md) at relative tolerance `1e-8`. Passing this check leaves the solve unverified. |
@@ -79,7 +82,11 @@ returns `solved_unverified` after a successful solve. Explicit Q4 references
 return `not_applicable` for MITC4. Its independent convergence results are in
 the [validation record](validation.md).
 
-The report stays at schema 1.0. Implicit and explicit `q4_full` produce the
+Classical reports stay at schema 1.0. Planar structure reports use schema 1.1,
+which adds the optional `diagnostic_code`; both versions round-trip through
+`VerificationReport.from_json`. A structural numerical or stability failure
+carries one code from `unstable_or_ill_conditioned`, `numerical_range` or
+`relative_residual_exceeded`. Implicit and explicit `q4_full` produce the
 original `reissner_mindlin_q4_full` fingerprint inputs. The nested `model`
 dictionary omits the default formulation for those inputs. For MITC4 the
 top-level identifier is `reissner_mindlin_mitc4_rectangle` and the nested model
