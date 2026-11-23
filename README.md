@@ -54,6 +54,8 @@ input fingerprint and verification report, plus the numeric arrays in
 
 - Run a mesh convergence study to compare explicit grids and save a replayable
   report with the result from each solve. [Convergence guide](docs/convergence.md)
+- Scan cantilever parameters or estimate local sensitivities from Python.
+  [Parameter studies](docs/parameter-studies.md)
 - Use a local stdio MCP client to validate models, solve them, run studies,
   and inspect artifacts. [MCP guide](docs/mcp.md)
 
