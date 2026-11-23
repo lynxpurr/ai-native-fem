@@ -1,0 +1,19 @@
+{
+  "model": {
+    "schema_version": "1.0",
+    "problem_type": "cantilever_bending",
+    "units": {"length": "m", "force": "N", "stress": "Pa"},
+    "model": {"length": 2, "young_modulus": 210000000000, "second_moment": 0.000001, "elements": 8},
+    "loads": {"tip_force": 1000},
+    "analysis": {"type": "static"}
+  },
+  "axes": [
+    {"path": "loads.tip_force", "unit": "N", "bounds": [-1500, 1500], "values": [800, 1000, 1200]},
+    {"path": "model.young_modulus", "unit": "Pa", "bounds": [150000000000, 240000000000],
+     "values": [180000000000, 210000000000]},
+    {"path": "model.second_moment", "unit": "m^4", "bounds": [0.0000008, 0.000002], "values": [0.000001]},
+    {"path": "model.length", "unit": "m", "bounds": [1, 2.5], "values": [2]}
+  ],
+  "observable": "tip_deflection",
+  "max_solves": 64
+}

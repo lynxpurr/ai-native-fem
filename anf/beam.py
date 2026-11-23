@@ -6,6 +6,7 @@ and slope at each node are the two DOFs; this module models one bending plane.
 from dataclasses import dataclass
 import numpy as np
 from ._linear import checked_arithmetic, count, eliminate, finite, positive, strain_energy
+from .assembly import DenseAssembly
 
 
 @dataclass(frozen=True)
@@ -57,24 +58,35 @@ def beam_element(length, bending_rigidity):
     return stiffness, unit_load
 
 
-@checked_arithmetic
 def solve_cantilever(model: Beam, *, tip_force=0.0, uniform_load=0.0):
     """Constant-section cantilever; positive loads produce positive deflection."""
+    return _solve_cantilever(model, tip_force=tip_force, uniform_load=uniform_load)
+
+
+@checked_arithmetic
+def _solve_cantilever(model, *, tip_force, uniform_load, sparse=None):
     if not isinstance(model, Beam):
         raise TypeError("model must be a Beam")
     tip_force = finite(tip_force, "tip_force")
     uniform_load = finite(uniform_load, "uniform_load")
     size = 2 * (model.elements + 1)
-    stiffness = np.zeros((size, size))
+    assembly = DenseAssembly(size) if sparse is None else sparse.assembly(size, 16 * model.elements)
     force = np.zeros(size)
     local, unit_load = beam_element(model.length/model.elements,
                                     model.young_modulus*model.second_moment)
     for element in range(model.elements):
         dofs = np.arange(2*element, 2*element+4)
-        stiffness[np.ix_(dofs, dofs)] += local
+        assembly.add(dofs, local)
         force[dofs] += uniform_load * unit_load
     force[-2] += tip_force
-    displacement, reactions, residual = eliminate(stiffness, force, [0, 1])
+    if sparse is None:
+        stiffness = assembly.finish()
+        displacement, reactions, residual = eliminate(stiffness, force, [0, 1])
+    else:
+        stiffness = sparse.assembled(assembly)
+        displacement, reactions, residual = sparse.eliminate_classical(
+            stiffness, force, [0, 1], stride=2, length=model.length,
+        )
     return BeamResult(np.linspace(0.0, model.length, model.elements+1),
                       displacement[::2], displacement[1::2], reactions[:2],
                       strain_energy(stiffness, displacement), residual)

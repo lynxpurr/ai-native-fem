@@ -93,12 +93,23 @@ _SNAPSHOT = ReferenceRecord(
     _THIN.scope,
     (("center_deflection", "m"),), 1e-8, "Tolerance covers the published FE value's rounding.",
 )
+_STRUCTURE_REFERENCE = ReferenceRecord(
+    "structure.cantilever-tip.v1", ReferenceKind.ANALYTIC,
+    "R. Radovitzky, MIT 16.21, Principle of Virtual Forces (2005-03-18)",
+    "Equations (12)–(17); see docs/frame2d.md for the cantilever observables",
+    "One +x frame member, fixed i end, free j end, nonzero tip fy only",
+    (("tip_uy", "m"), ("tip_rz", "rad"), ("root_fy", "N"), ("root_mz", "N·m")),
+    1e-8, "Closed form from elastic bending and static equilibrium.",
+)
 
-REFERENCE_REGISTRY = MappingProxyType({
+_CLASSICAL_REFERENCES = MappingProxyType({
     record.id: record for record in (_BEAM, _PLATE, _THIN, _SNAPSHOT)
 })
+REFERENCE_REGISTRY = MappingProxyType({**_CLASSICAL_REFERENCES, _STRUCTURE_REFERENCE.id: _STRUCTURE_REFERENCE})
 _RESIDUAL_ID = "free_dof_relative_residual"
 _RESIDUAL_EVIDENCE = "static.relative-residual.v1"
+_STRUCTURE_RESIDUAL = "planar_structure.relative-residual.v1"
+_STRUCTURE_FAILURES = ("unstable_or_ill_conditioned", "numerical_range", "relative_residual_exceeded")
 
 
 @dataclass(frozen=True)
@@ -155,10 +166,8 @@ class VerificationReport:
     checks: tuple[VerificationCheck, ...]
     warnings: tuple[str, ...]
     scope: str
-
-    @property
-    def schema_version(self):
-        return "1.0"
+    schema_version: str = "1.0"
+    diagnostic_code: str | None = None
 
     @property
     def reference_ids(self):
@@ -185,6 +194,14 @@ class VerificationReport:
         return "solved_unverified"
 
     def __post_init__(self):
+        if self.schema_version not in ("1.0", "1.1"):
+            raise ValueError("unsupported verification report schema")
+        structural = self.schema_version == "1.1"
+        if structural and self.solve_status == "numerical_failure":
+            if self.diagnostic_code not in _STRUCTURE_FAILURES or len(self.warnings) != 1:
+                raise ValueError("structural failure requires one diagnostic")
+        elif self.diagnostic_code is not None:
+            raise ValueError("unexpected diagnostic code")
         if self.input_status == "valid":
             if (self.solve_status not in ("solved", "numerical_failure")
                     or not isinstance(self.input_hash, str)
@@ -205,14 +222,17 @@ class VerificationReport:
         if len({check.id for check in self.checks}) != len(self.checks):
             raise ValueError("check IDs must be unique")
         residuals = []
+        residual_evidence = _STRUCTURE_RESIDUAL if structural else _RESIDUAL_EVIDENCE
         for check in self.checks:
-            if check.evidence_id == _RESIDUAL_EVIDENCE:
-                if check != _residual(check.observed):
+            if check.evidence_id == residual_evidence:
+                if check != _residual(check.observed, evidence=residual_evidence):
                     raise ValueError("invalid residual check")
                 residuals.append(check)
             else:
-                record = REFERENCE_REGISTRY.get(check.evidence_id)
+                references = REFERENCE_REGISTRY if structural else _CLASSICAL_REFERENCES
+                record = references.get(check.evidence_id)
                 if (record is None or dict(record.observable_units).get(check.observable) != check.unit
+                        or (structural and record is not _STRUCTURE_REFERENCE)
                         or check.id != f"{record.id}.{check.observable}"):
                     raise ValueError("check does not match its registered evidence")
                 if check.outcome in ("pass", "fail"):
@@ -231,20 +251,23 @@ class VerificationReport:
 
     def to_json(self):
         """Serialize the complete report using strict JSON."""
-        return _json({
-            **asdict(self), "schema_version": self.schema_version,
-            "verification_status": self.verification_status, "reference_ids": self.reference_ids,
-        })
+        data = asdict(self)
+        if self.schema_version == "1.0":
+            del data["diagnostic_code"]
+        return _json({**data, "verification_status": self.verification_status,
+                      "reference_ids": self.reference_ids})
 
     @classmethod
     def from_json(cls, payload):
-        """Read a schema 1.0 report serialized by to_json."""
+        """Read a versioned report serialized by to_json."""
         if not isinstance(payload, str) or len(payload) > 65536:
             raise ValueError("expected a JSON report of at most 65536 characters")
         try:
             data = json.loads(payload, parse_constant=_reject_constant, object_pairs_hook=_unique_keys)
-            if not isinstance(data, dict) or data.pop("schema_version") != "1.0":
+            if not isinstance(data, dict) or data.get("schema_version") not in ("1.0", "1.1"):
                 raise ValueError("unsupported verification report schema")
+            if ("diagnostic_code" in data) != (data["schema_version"] == "1.1"):
+                raise ValueError("diagnostic code does not match the report schema")
             status = data.pop("verification_status")
             reference_ids = data.pop("reference_ids")
             if not all(isinstance(items, list) for items in (data["checks"], data["warnings"], reference_ids)):
@@ -301,7 +324,7 @@ def _reference(reference):
     if reference is None:
         return None
     key = reference.id if isinstance(reference, ReferenceRecord) else reference
-    registered = REFERENCE_REGISTRY.get(key) if isinstance(key, str) else None
+    registered = _CLASSICAL_REFERENCES.get(key) if isinstance(key, str) else None
     if registered is None or (isinstance(reference, ReferenceRecord) and reference != registered):
         raise ValueError("reference must be an unchanged record or ID from REFERENCE_REGISTRY")
     return registered
@@ -318,11 +341,11 @@ def _plate_case(model, pressure):
     )
 
 
-def _residual(observed=None):
+def _residual(observed=None, *, evidence=_RESIDUAL_EVIDENCE):
     return VerificationCheck(
         _RESIDUAL_ID, _RESIDUAL_ID, observed, 0.0 if observed is not None else None,
         "1", "absolute", MAX_RELATIVE_RESIDUAL,
-        "pass" if observed is not None else "not_run", _RESIDUAL_EVIDENCE, error=observed,
+        "pass" if observed is not None else "not_run", evidence, error=observed,
     )
 
 
@@ -462,8 +485,68 @@ def _failed(input_hash, scope, record, error):
 
 
 def _describe_case(inputs):
-    return (sha256(_json(inputs).encode("utf-8")).hexdigest(),
-            f"{inputs['formulation']}, {inputs['support']}, {inputs['units']}")
+    if inputs.get("problem_type") == "planar_structure":
+        scope = "planar_structure, linear elastic statics, SI"
+    else:
+        scope = f"{inputs['formulation']}, {inputs['support']}, {inputs['units']}"
+    return sha256(_json(inputs).encode("utf-8")).hexdigest(), scope
+
+
+def _structure_cantilever(model, result):
+    members = model.model["members"]
+    if len(members) != 1:
+        return _unperformed(_STRUCTURE_REFERENCE, "not_applicable")
+    member, = members.values()
+    root, tip = member["i"], member["j"]
+    start, end = (model.model["nodes"][node] for node in (root, tip))
+    nodal = model.loads["nodal"]
+    if (member["kind"] != "frame2d" or end[0] <= start[0] or end[1] != start[1]
+            or model.model["supports"] != {root: {"ux": 0, "uy": 0, "rz": 0}}
+            or nodal.keys() != {tip} or nodal[tip].keys() != {"fy"}
+            or model.loads["uniform_transverse"]):
+        return _unperformed(_STRUCTURE_REFERENCE, "not_applicable")
+    root_dofs, tip_dofs = (model.mesh.node_dofs[model.mesh.node_order.index(("input", node))]
+                           for node in (root, tip))
+    length = end[0] - start[0]
+    force = nodal[tip]["fy"]
+    rigidity = member["young_modulus"] * member["second_moment"]
+    slope = (force / rigidity) * length * length / 2
+    expected = (slope * length * (2/3), slope, -force, -force * length)
+    if not all(math.isfinite(value) and value != 0 for value in expected):
+        raise ArithmeticError("cantilever reference is outside the representable numerical range")
+    observed = (result.displacement[tip_dofs[1]], result.displacement[tip_dofs[2]],
+                result.reactions[root_dofs[1]], result.reactions[root_dofs[2]])
+    return tuple(_compare(_STRUCTURE_REFERENCE, name, unit, actual, target)
+                 for (name, unit), actual, target in
+                 zip(_STRUCTURE_REFERENCE.observable_units, observed, expected, strict=True))
+
+
+def _structure_report(model, inputs, reference, *, result=None, failure=None):
+    input_hash, scope = _describe_case(inputs)
+    record = _STRUCTURE_REFERENCE if reference is not None else None
+    if failure is not None:
+        return VerificationReport(
+            input_hash, "valid", "numerical_failure",
+            (_residual(evidence=_STRUCTURE_RESIDUAL), *_unperformed(record, "not_run")),
+            (str(failure),), scope, "1.1", failure.code,
+        )
+    checks = ()
+    warnings = ()
+    if record is None:
+        warnings = ("No independent reference was evaluated.",)
+    else:
+        try:
+            checks = _structure_cantilever(model, result)
+        except (ArithmeticError, ValueError) as error:
+            checks = _unperformed(record, "not_run")
+            warnings = (f"Reference check could not be evaluated: {error}",)
+        if checks[0].outcome == "not_applicable":
+            warnings = ("Reference is outside its applicability domain for these inputs.",)
+    return VerificationReport(
+        input_hash, "valid", "solved",
+        (_residual(result.relative_residual, evidence=_STRUCTURE_RESIDUAL), *checks),
+        warnings, scope, "1.1",
+    )
 
 
 def evaluate_checks(result, reference=None, *, inputs):

@@ -59,12 +59,53 @@ Minimizing the continuous energy mode by mode gives compliance
 The tests sum these modes directly from the continuous energy described in
 [Schöberl's Reissner–Mindlin notes](https://jschoeberl.github.io/iFEM/plates_shells/2_ReissnerMindlin.html).
 
+## Planar truss and frame
+
+A `truss2d` member is a two-node bar with axial strain energy
+`(1/2) ∫ EA (u')² dx`. A `frame2d` member adds Euler–Bernoulli bending through
+cubic Hermite interpolation of the transverse displacement, so the end
+rotations are nodal degrees of freedom. Each node carries `ux`, `uy` and `rz`.
+Element matrices and consistent load vectors are formed in local axes and
+rotated to global axes before dense assembly. The documented uniform and
+linearly varying member loads contribute consistent nodal loads and fixed-end
+actions. Prescribed displacements enter the free-system right-hand side, and
+reactions come from the assembled force balance.
+
+Schema 1.3 end releases condense the released end rotation out of the element
+and retain the corresponding fixed-end moment in the load vector. A rotational
+spring adds its stiffness between the beam end rotation and the external node
+rotation. Member end actions and station values for axial force, shear and
+moment are recovered from the local displacement and the member load. The
+formulation is linear, small displacement, planar and rigid-jointed except for
+the declared releases and springs; it does not include shear deformation or
+3D torsion. See the [planar structure guide](frame2d.md) and
+[load case guide](load-cases.md).
+
+## Sparse backend
+
+The optional SciPy backend assembles element triplets in model order, sums
+duplicate entries, removes explicit zeros and stores the stiffness in CSR.
+The free system is solved in CSC form with SuperLU. Nonzero prescribed
+displacements enter as `f_free - K_free,fixed @ u_fixed`, and reactions come
+from the original global force balance. Planar structures use diagonal
+equilibration and a positive-pivot test on a separate shifted stiffness; the
+solve itself uses the unshifted matrix. The free-DOF relative residual limit
+remains `1e-8`, and the model fingerprint, result format and verification
+checks do not depend on the backend. The dense solver remains the default.
+See the [sparse guide](sparse.md).
+
 ## Restrictions
 
 The plate model is limited to homogeneous isotropic, rectangular and
-small-displacement cases. The [validation record](validation.md) lists the
-tested material, thicknesses, boundary conditions and loads. Results require
-independent review for an engineering application.
+small-displacement cases. Planar models are limited to the documented node,
+member, support and load forms, with releases and springs only where declared.
+Schema 1.2/1.3 batch runs, parameter studies and native mesh import are Python
+interfaces; the CLI and MCP accept single-solve schema 1.0/1.1 declarations.
+Parameter studies cover a schema 1.0 cantilever with a tip force, and native
+meshes cover planar members and uniform rectangular plates. The
+[validation record](validation.md) lists the tested material, thicknesses,
+boundary conditions and loads. Results require independent review for an
+engineering application.
 
 Inputs are stored as finite Python floats and integer mesh counts, including
 when NumPy scalar inputs are supplied. The model-size caps limit memory use;

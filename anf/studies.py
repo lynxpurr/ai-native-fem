@@ -9,7 +9,7 @@ from .application import run_analysis
 from .artifacts import ResultBundle
 from .beam import Beam
 from .model import ModelSpec, ModelValidationError, _count, _fields, canonical_input_hash, validate_model
-from .verification import REFERENCE_REGISTRY
+from .verification import _CLASSICAL_REFERENCES
 
 
 _MAX_MESHES = 16
@@ -32,12 +32,15 @@ class StudySpec:
     def __init__(self, model, meshes, observable, *, reference=None, failure_policy="stop",
                  max_solves=_MAX_MESHES, max_output_bytes=_MAX_OUTPUT_BYTES, base_model_hash=None):
         model = validate_model(model)
+        if model.problem_type not in _OBSERVABLES:
+            raise ModelValidationError("/study/model/problem_type", "unsupported_problem",
+                                       "convergence studies support only beam and plate models")
         if base_model_hash is not None and base_model_hash != canonical_input_hash(model):
             raise ModelValidationError("/study/base_model_hash", "hash_mismatch", "base model fingerprint differs")
         if observable != _OBSERVABLES[model.problem_type]:
             raise ModelValidationError("/study/observable", "unsupported_observable",
                                        f"expected {_OBSERVABLES[model.problem_type]}")
-        if reference is not None and (not isinstance(reference, str) or reference not in REFERENCE_REGISTRY):
+        if reference is not None and (not isinstance(reference, str) or reference not in _CLASSICAL_REFERENCES):
             raise ModelValidationError("/study/reference", "unsupported_reference", "expected a registered ID")
         if failure_policy not in ("stop", "record_and_continue"):
             raise ModelValidationError("/study/failure_policy", "invalid_value", "expected stop or record_and_continue")
@@ -116,7 +119,7 @@ class _Step:
             "observed_m": self.observed_m, "successive_mesh_change_m": self.successive_mesh_change_m,
             "relative_residual": result.relative_residual if result is not None else None,
             "reference_check": asdict(check) if check is not None else None,
-            "reference_kind": REFERENCE_REGISTRY[check.evidence_id].kind.value if check is not None else None,
+            "reference_kind": _CLASSICAL_REFERENCES[check.evidence_id].kind.value if check is not None else None,
             "diagnostics": diagnostics,
         }
 

@@ -30,6 +30,7 @@ EXAMPLES = (
     ("plate_convergence.py",),
     ("plate_convergence.py", "--formulation", "mitc4_rectangle"),
     ("plate_locking.py",),
+    ("parameter-studies/cantilever.py", "parameter-study-example"),
 )
 CHECK_INSTALL = """
 import json
@@ -227,7 +228,7 @@ def verify_release(wheel, sdist, source, source_files, project):
     return {wheel.name: sorted(wheel_contents), sdist.name: sorted(sdist_contents)}
 
 
-def install_and_test(asset, source_dir, version, directory, *, mcp):
+def install_and_test(asset, source_dir, version, directory, *, mcp, sparse):
     print(f"Testing installed {asset.name}", flush=True)
     directory.mkdir()
     environment = directory / "venv"
@@ -241,6 +242,9 @@ def install_and_test(asset, source_dir, version, directory, *, mcp):
     )
     optional = ["mcp", "anyio"] if mcp else []
     versions = json.loads(subprocess.check_output([*run, "-c", CHECK_INSTALL, version, *optional], cwd=directory))
+    if sparse:
+        subprocess.run([*run, "-c", "from importlib.util import find_spec; assert find_spec('scipy') is None"],
+                       check=True, cwd=directory)
     for name in ("tests", "examples"):
         copytree(source_dir / name, directory / name)
     subprocess.run([*run, "-m", "pytest", "-q", "tests"], check=True, cwd=directory)
@@ -250,6 +254,19 @@ def install_and_test(asset, source_dir, version, directory, *, mcp):
             [str(python), "-E", "-s", str(directory / "examples" / script), *args],
             check=True, cwd=directory,
         )
+    if sparse:
+        print(f"Testing sparse extra for {asset.name}", flush=True)
+        subprocess.run(
+            [*run, "-m", "pip", "--disable-pip-version-check", "install", f"{asset}[sparse]"],
+            check=True, cwd=directory,
+        )
+        subprocess.run([*run, "-c", "import scipy.sparse.linalg"], check=True, cwd=directory)
+        versions = json.loads(subprocess.check_output(
+            [*run, "-c", CHECK_INSTALL, version, *optional, "scipy"], cwd=directory,
+        ))
+        subprocess.run([*run, "-m", "pytest", "-q", "tests/test_sparse_parity.py",
+                        "tests/test_mesh_io_v1.py::test_me1_optional_sparse_uses_same_native_projection"],
+                       check=True, cwd=directory)
     return versions
 
 
@@ -349,7 +366,8 @@ def main():
             "python": sys.version.split()[0],
             "installations": {
                 asset.name: install_and_test(asset, source_dir, source["version"], work / f"test-{index}",
-                                             mcp="mcp" in project.get("optional-dependencies", {}))
+                                             mcp="mcp" in project.get("optional-dependencies", {}),
+                                             sparse="sparse" in project.get("optional-dependencies", {}))
                 for index, asset in enumerate((wheel, sdist))
             },
             "release": release,

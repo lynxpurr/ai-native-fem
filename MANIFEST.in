@@ -1,7 +1,13 @@
 include LICENSE NOTICE README.md CONTRIBUTING.md SECURITY.md
+include benchmarks/sparse_scaling.py
 recursive-include docs *.md
 recursive-include tests *.py
 recursive-include examples *.py *.md
 recursive-include examples/models *.json
+recursive-include examples/parameter-studies *.json
 recursive-include examples/studies *.json
+recursive-include examples/structures *.json
 include schemas/model-v1.json schemas/result-v1.json
+include schemas/model-v1.1.json schemas/result-v1.1.json
+include schemas/model-v1.2.json schemas/load-case-results-v1.2.json
+include schemas/model-v1.3.json schemas/load-case-results-v1.3.json

@@ -1,0 +1,30 @@
+{
+  "schema_version": "1.3",
+  "problem_type": "planar_structure",
+  "units": {"length": "m", "force": "N", "stress": "Pa"},
+  "analysis": {"type": "static"},
+  "model": {
+    "nodes": {"left": [0, 0], "right": [4, 0]},
+    "members": {
+      "beam": {
+        "kind": "frame2d",
+        "i": "left",
+        "j": "right",
+        "young_modulus": 200000000000,
+        "area": 0.01,
+        "second_moment": 0.000001,
+        "elements": 4,
+        "end_connections": {
+          "i": {"kind": "rotational_spring", "stiffness": 150000},
+          "j": {"kind": "release"}
+        }
+      }
+    },
+    "supports": {"left": {"ux": 0, "uy": 0, "rz": 0}, "right": {"uy": 0}}
+  },
+  "loads": {
+    "cases": {
+      "uniform": {"member_line": {"beam": {"basis": "global", "i": [0, -500], "j": [0, -500]}}}
+    }
+  }
+}

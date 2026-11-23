@@ -1,6 +1,6 @@
 # Run ANF through local MCP
 
-Download `ai_native_fem-0.1.0a4-py3-none-any.whl` from the [GitHub Releases
+Download `ai_native_fem-0.1.0a5-py3-none-any.whl` from the [GitHub Releases
 page](https://github.com/lynxpurr/ai-native-fem/releases). In an active
 Python environment, run one of the following commands from the directory
 containing the wheel.
@@ -8,13 +8,13 @@ containing the wheel.
 For Python and the `anf` command line:
 
 ```sh
-python -m pip install "./ai_native_fem-0.1.0a4-py3-none-any.whl"
+python -m pip install "./ai_native_fem-0.1.0a5-py3-none-any.whl"
 ```
 
 To also enable local MCP:
 
 ```sh
-python -m pip install "./ai_native_fem-0.1.0a4-py3-none-any.whl[mcp]"
+python -m pip install "./ai_native_fem-0.1.0a5-py3-none-any.whl[mcp]"
 ```
 
 Configure a stdio client to launch `anf-mcp --workspace PATH`, with an existing,
@@ -28,6 +28,13 @@ Pass a [model declaration](model-format.md) to `validate_model` and
 `convergence_study`. `capabilities` advertises supported formulations,
 registered references and numerical limits.
 
+`validate_model` and `solve_model` accept schema 1.0 beam/plate declarations
+and schema 1.1 planar structure declarations. `inspect_artifact` reads result
+schema 1.0 or 1.1, and `capabilities` reports both model and result schema
+sets. Schema 1.2/1.3 batch load cases, sparse backend selection, parameter
+studies and native mesh import are Python interfaces and are not exposed as
+MCP tools.
+
 Solve and study calls return a bounded summary and a workspace-local ID.
 Use `inspect_artifact` with that ID to check the saved result. The complete
 arrays and study files remain in the configured workspace. Tool errors carry
@@ -39,8 +46,8 @@ to 16 KiB, and study work to the declared mesh and output budgets.
 
 ## Run a real client
 
-The example model and study are in the matching `0.1.0a4` source distribution
-and the `v0.1.0a4` tag. Run the example from the root of the unpacked source
+The example model and study are in the matching `0.1.0a5` source distribution
+and the `v0.1.0a5` tag. Run the example from the root of the unpacked source
 distribution or tag checkout with the MCP extra installed.
 
 ```python

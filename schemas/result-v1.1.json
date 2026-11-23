@@ -1,0 +1,826 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lynxpurr/ai-native-fem/develop/schemas/result-v1.1.json",
+  "title": "ANF planar structure result manifest 1.1",
+  "description": "Readers also check model-derived ordering, shapes, input identity, report consistency and ZIP/NPY contents.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "model",
+    "input_hash",
+    "solve_status",
+    "verification_status",
+    "versions",
+    "reference",
+    "report",
+    "diagnostics",
+    "strain_energy",
+    "relative_residual",
+    "arrays",
+    "arrays_sha256",
+    "ordering"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.1"
+    },
+    "model": {
+      "$ref": "model-v1.1.json",
+      "properties": {
+        "model": {
+          "properties": {
+            "members": {
+              "additionalProperties": {
+                "required": [
+                  "elements"
+                ]
+              }
+            }
+          }
+        },
+        "loads": {
+          "required": [
+            "nodal",
+            "uniform_transverse"
+          ]
+        }
+      }
+    },
+    "input_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "solve_status": {
+      "enum": [
+        "solved",
+        "numerical_failure"
+      ]
+    },
+    "verification_status": {
+      "enum": [
+        "verification_passed",
+        "verification_failed",
+        "solved_unverified",
+        "not_run"
+      ]
+    },
+    "versions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "anf",
+        "python",
+        "numpy"
+      ],
+      "properties": {
+        "anf": {
+          "type": "string",
+          "minLength": 1
+        },
+        "python": {
+          "type": "string",
+          "minLength": 1
+        },
+        "numpy": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "reference": {
+      "enum": [
+        null,
+        "structure.cantilever-tip.v1"
+      ]
+    },
+    "report": {
+      "$ref": "#/$defs/report"
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "enum": [
+              "unstable_or_ill_conditioned",
+              "numerical_range",
+              "relative_residual_exceeded",
+              "verification_warning"
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "strain_energy": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "Strain energy in J."
+    },
+    "relative_residual": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 1e-08,
+      "description": "Dimensionless free-DOF residual."
+    },
+    "arrays": {
+      "type": "object"
+    },
+    "arrays_sha256": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        {
+          "const": null
+        }
+      ]
+    },
+    "ordering": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "node_order",
+        "frame_node_order",
+        "member_order"
+      ],
+      "properties": {
+        "node_order": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "const": "input"
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}(?![\\s\\S])"
+                  }
+                ],
+                "minItems": 2,
+                "items": false
+              },
+              {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "const": "generated"
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}(?![\\s\\S])"
+                  },
+                  {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 31
+                  }
+                ],
+                "minItems": 3,
+                "items": false
+              }
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 2,
+          "maxItems": 200
+        },
+        "frame_node_order": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "const": "input"
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}(?![\\s\\S])"
+                  }
+                ],
+                "minItems": 2,
+                "items": false
+              },
+              {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "const": "generated"
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}(?![\\s\\S])"
+                  },
+                  {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 31
+                  }
+                ],
+                "minItems": 3,
+                "items": false
+              }
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 0,
+          "maxItems": 200
+        },
+        "member_order": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}(?![\\s\\S])"
+          },
+          "uniqueItems": true,
+          "minItems": 1,
+          "maxItems": 400
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "solve_status": {
+            "const": "solved"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "verification_status": {
+            "enum": [
+              "verification_passed",
+              "verification_failed",
+              "solved_unverified"
+            ]
+          },
+          "strain_energy": {
+            "type": "number"
+          },
+          "relative_residual": {
+            "type": "number"
+          },
+          "arrays_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "arrays": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "node_ux": {
+                "$ref": "#/$defs/array",
+                "properties": {
+                  "position": {
+                    "const": "node"
+                  },
+                  "unit": {
+                    "const": "m"
+                  },
+                  "shape": {
+                    "minItems": 1,
+                    "maxItems": 1,
+                    "prefixItems": [
+                      {
+                        "maximum": 200
+                      }
+                    ]
+                  }
+                }
+              },
+              "node_uy": {
+                "$ref": "#/$defs/array",
+                "properties": {
+                  "position": {
+                    "const": "node"
+                  },
+                  "unit": {
+                    "const": "m"
+                  },
+                  "shape": {
+                    "minItems": 1,
+                    "maxItems": 1,
+                    "prefixItems": [
+                      {
+                        "maximum": 200
+                      }
+                    ]
+                  }
+                }
+              },
+              "reaction_fx": {
+                "$ref": "#/$defs/array",
+                "properties": {
+                  "position": {
+                    "const": "node"
+                  },
+                  "unit": {
+                    "const": "N"
+                  },
+                  "shape": {
+                    "minItems": 1,
+                    "maxItems": 1,
+                    "prefixItems": [
+                      {
+                        "maximum": 200
+                      }
+                    ]
+                  }
+                }
+              },
+              "reaction_fy": {
+                "$ref": "#/$defs/array",
+                "properties": {
+                  "position": {
+                    "const": "node"
+                  },
+                  "unit": {
+                    "const": "N"
+                  },
+                  "shape": {
+                    "minItems": 1,
+                    "maxItems": 1,
+                    "prefixItems": [
+                      {
+                        "maximum": 200
+                      }
+                    ]
+                  }
+                }
+              },
+              "member_end_axial": {
+                "$ref": "#/$defs/array",
+                "properties": {
+                  "position": {
+                    "const": "member_end"
+                  },
+                  "unit": {
+                    "const": "N"
+                  },
+                  "shape": {
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "prefixItems": [
+                      {
+                        "maximum": 400
+                      },
+                      {
+                        "const": 2
+                      }
+                    ]
+                  }
+                }
+              },
+              "member_end_shear": {
+                "$ref": "#/$defs/array",
+                "properties": {
+                  "position": {
+                    "const": "member_end"
+                  },
+                  "unit": {
+                    "const": "N"
+                  },
+                  "shape": {
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "prefixItems": [
+                      {
+                        "maximum": 400
+                      },
+                      {
+                        "const": 2
+                      }
+                    ]
+                  }
+                }
+              },
+              "member_end_moment": {
+                "$ref": "#/$defs/array",
+                "properties": {
+                  "position": {
+                    "const": "member_end"
+                  },
+                  "unit": {
+                    "const": "N·m"
+                  },
+                  "shape": {
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "prefixItems": [
+                      {
+                        "maximum": 400
+                      },
+                      {
+                        "const": 2
+                      }
+                    ]
+                  }
+                }
+              },
+              "node_rz": {
+                "$ref": "#/$defs/array",
+                "properties": {
+                  "position": {
+                    "const": "frame_node"
+                  },
+                  "unit": {
+                    "const": "rad"
+                  },
+                  "shape": {
+                    "minItems": 1,
+                    "maxItems": 1,
+                    "prefixItems": [
+                      {
+                        "maximum": 200
+                      }
+                    ]
+                  }
+                }
+              },
+              "reaction_mz": {
+                "$ref": "#/$defs/array",
+                "properties": {
+                  "position": {
+                    "const": "frame_node"
+                  },
+                  "unit": {
+                    "const": "N·m"
+                  },
+                  "shape": {
+                    "minItems": 1,
+                    "maxItems": 1,
+                    "prefixItems": [
+                      {
+                        "maximum": 200
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "required": [
+              "node_ux",
+              "node_uy",
+              "reaction_fx",
+              "reaction_fy",
+              "member_end_axial",
+              "member_end_shear",
+              "member_end_moment"
+            ]
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "ordering": {
+                  "properties": {
+                    "frame_node_order": {
+                      "minItems": 1
+                    }
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "arrays": {
+                  "required": [
+                    "node_rz",
+                    "reaction_mz"
+                  ]
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "arrays": {
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "node_rz"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "reaction_mz"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "solve_status": {
+            "const": "numerical_failure"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "verification_status": {
+            "const": "not_run"
+          },
+          "strain_energy": {
+            "const": null
+          },
+          "relative_residual": {
+            "const": null
+          },
+          "arrays_sha256": {
+            "const": null
+          },
+          "arrays": {
+            "maxProperties": 0
+          },
+          "diagnostics": {
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "properties": {
+                "code": {
+                  "enum": [
+                    "unstable_or_ill_conditioned",
+                    "numerical_range",
+                    "relative_residual_exceeded"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "report": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "input_hash",
+        "input_status",
+        "solve_status",
+        "checks",
+        "warnings",
+        "scope",
+        "verification_status",
+        "reference_ids",
+        "diagnostic_code"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "1.1"
+        },
+        "input_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "input_status": {
+          "const": "valid"
+        },
+        "solve_status": {
+          "enum": [
+            "solved",
+            "numerical_failure"
+          ]
+        },
+        "checks": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "items": {
+            "$ref": "#/$defs/check"
+          },
+          "prefixItems": [
+            {
+              "properties": {
+                "id": {
+                  "const": "free_dof_relative_residual"
+                },
+                "evidence_id": {
+                  "const": "planar_structure.relative-residual.v1"
+                }
+              }
+            }
+          ]
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "scope": {
+          "type": "string",
+          "minLength": 1
+        },
+        "verification_status": {
+          "enum": [
+            "verification_passed",
+            "verification_failed",
+            "solved_unverified",
+            "not_run"
+          ]
+        },
+        "reference_ids": {
+          "type": "array",
+          "maxItems": 1,
+          "items": {
+            "const": "structure.cantilever-tip.v1"
+          }
+        },
+        "diagnostic_code": {
+          "enum": [
+            null,
+            "unstable_or_ill_conditioned",
+            "numerical_range",
+            "relative_residual_exceeded"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "solve_status": {
+                "const": "solved"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "diagnostic_code": {
+                "const": null
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "diagnostic_code": {
+                "enum": [
+                  "unstable_or_ill_conditioned",
+                  "numerical_range",
+                  "relative_residual_exceeded"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "observable",
+        "observed",
+        "reference",
+        "unit",
+        "metric",
+        "threshold",
+        "outcome",
+        "evidence_id",
+        "error",
+        "error_scale",
+        "reference_error_bound"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "observable": {
+          "type": "string",
+          "minLength": 1
+        },
+        "observed": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "reference": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "unit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "metric": {
+          "type": "string",
+          "minLength": 1
+        },
+        "threshold": {
+          "type": "number",
+          "minimum": 0
+        },
+        "outcome": {
+          "enum": [
+            "pass",
+            "fail",
+            "not_applicable",
+            "not_run"
+          ]
+        },
+        "evidence_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "error": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "error_scale": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "reference_error_bound": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "array": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dtype",
+        "shape",
+        "unit",
+        "position"
+      ],
+      "properties": {
+        "dtype": {
+          "const": "<f8"
+        },
+        "shape": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000000
+          }
+        },
+        "unit": {
+          "enum": [
+            "m",
+            "rad",
+            "N",
+            "N·m"
+          ]
+        },
+        "position": {
+          "enum": [
+            "node",
+            "frame_node",
+            "member_end"
+          ]
+        }
+      }
+    }
+  }
+}

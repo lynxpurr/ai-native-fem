@@ -1,0 +1,58 @@
+{
+  "schema_version": "1.1",
+  "problem_type": "planar_structure",
+  "units": {
+    "length": "m",
+    "force": "N",
+    "stress": "Pa"
+  },
+  "model": {
+    "nodes": {
+      "left": [
+        0,
+        0
+      ],
+      "middle": [
+        2,
+        0
+      ],
+      "right": [
+        4,
+        0
+      ]
+    },
+    "members": {
+      "first": {
+        "kind": "truss2d",
+        "i": "left",
+        "j": "middle",
+        "young_modulus": 200000000000,
+        "area": 0.00001
+      },
+      "second": {
+        "kind": "truss2d",
+        "i": "middle",
+        "j": "right",
+        "young_modulus": 200000000000,
+        "area": 0.00001
+      }
+    },
+    "supports": {
+      "left": {
+        "ux": 0,
+        "uy": 0
+      },
+      "middle": {
+        "uy": 0
+      },
+      "right": {
+        "ux": 0.002,
+        "uy": 0
+      }
+    }
+  },
+  "loads": {},
+  "analysis": {
+    "type": "static"
+  }
+}

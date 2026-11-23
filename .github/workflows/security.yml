@@ -20,7 +20,7 @@ jobs:
           python-version: '3.12'
       - name: Install project dependencies and audit tooling
         run: |
-          python -m pip install ".[test,mcp]" "pip-audit>=2.9,<3"
+          python -m pip install ".[test,mcp,sparse]" "pip-audit>=2.9,<3"
           python -m pip freeze --exclude ai-native-fem --exclude pip-audit > audit-requirements.txt
       - name: Query known dependency advisories
         run: python -m pip_audit -r audit-requirements.txt --no-deps --disable-pip

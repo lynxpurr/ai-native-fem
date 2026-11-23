@@ -1,21 +1,27 @@
 """Versioned SI declarations for the classical static solvers."""
 
+from __future__ import annotations
+
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from decimal import Decimal, InvalidOperation
 import json
 import math
 from types import MappingProxyType
+from typing import TYPE_CHECKING
 
 from .beam import Beam
 from .plate import Plate
-from .verification import _describe_case, input_parameters
+from .verification import _describe_case, _json, input_parameters
 
+if TYPE_CHECKING:
+    from .structures import StructureMesh
 
 _JSON_LIMIT = 1024 * 1024
 _SI = {"length": "m", "force": "N", "stress": "Pa"}
 _BEAM = "cantilever_bending"
 _PLATE = "rectangular_plate"
+_STRUCTURE = "planar_structure"
 
 
 class ModelValidationError(ValueError):
@@ -36,14 +42,14 @@ class _ObjectPairs(list):
     pass
 
 
-def _decode_json(payload):
+def _decode_json(payload, limit=_JSON_LIMIT):
     try:
-        if len(payload) > _JSON_LIMIT:
-            raise ModelValidationError("", "size_limit", "JSON is limited to 1 MiB")
+        if len(payload) > limit:
+            raise ModelValidationError("", "size_limit", f"JSON is limited to {limit // _JSON_LIMIT} MiB")
         if isinstance(payload, str):
             payload = payload.encode("utf-8")
-        if len(payload) > _JSON_LIMIT:
-            raise ModelValidationError("", "size_limit", "JSON is limited to 1 MiB")
+        if len(payload) > limit:
+            raise ModelValidationError("", "size_limit", f"JSON is limited to {limit // _JSON_LIMIT} MiB")
         value = json.loads(payload.decode("utf-8"), object_pairs_hook=_ObjectPairs,
                            parse_int=Decimal, parse_float=Decimal, parse_constant=Decimal)
         return _unique_objects(value)
@@ -151,46 +157,94 @@ def _plate(parameters, loads):
     return Plate(**parameters), _fields(loads, "/loads", ("pressure",))
 
 
+def _freeze(value):
+    if isinstance(value, dict):
+        return MappingProxyType({key: _freeze(item) for key, item in value.items()})
+    return value
+
+
+def _plain(value):
+    if isinstance(value, Mapping):
+        return {key: _plain(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return list(value)
+    return value
+
+
 @dataclass(frozen=True, slots=True, init=False)
 class ModelSpec:
-    """An immutable, validated schema 1.0 declaration with explicit defaults."""
+    """An immutable, validated static declaration with explicit defaults."""
 
+    schema_version: str
     problem_type: str
-    model: Beam | Plate
-    loads: Mapping[str, float]
+    model: Beam | Plate | Mapping
+    loads: Mapping
+    mesh: StructureMesh | None
 
-    def __init__(self, doc):
+    def __init__(self, doc, *, _versions=("1.0", "1.1")):
         if isinstance(doc, (str, bytes)):
             doc = _decode_json(doc)
         doc = _fields(doc, "", ("schema_version", "problem_type", "units", "model", "loads", "analysis"))
-        _choice(doc["schema_version"], "/schema_version", ("1.0",), "unsupported_schema")
-        kind = _choice(doc["problem_type"], "/problem_type", (_BEAM, _PLATE), "unsupported_problem")
+        version = _choice(doc["schema_version"], "/schema_version", _versions,
+                          "unsupported_schema")
+        kinds = (_BEAM, _PLATE) if version == "1.0" else (_STRUCTURE,)
+        kind = _choice(doc["problem_type"], "/problem_type", kinds, "unsupported_problem")
         units = _fields(doc["units"], "/units", _SI)
         for name, expected in _SI.items():
             _choice(units[name], f"/units/{name}", (expected,), "unsupported_unit")
         analysis = _fields(doc["analysis"], "/analysis", ("type",))
         _choice(analysis["type"], "/analysis/type", ("static",), "unsupported_analysis")
-        model, loads = (_beam if kind == _BEAM else _plate)(doc["model"], doc["loads"])
+        mesh = None
+        if kind == _STRUCTURE:
+            from .structures import _structure
+
+            model, loads, mesh = _structure(doc["model"], doc["loads"], version)
+        else:
+            model, loads = (_beam if kind == _BEAM else _plate)(doc["model"], doc["loads"])
+            loads = {key: _number(value, f"/loads/{key}") for key, value in loads.items()}
+        object.__setattr__(self, "schema_version", version)
         object.__setattr__(self, "problem_type", kind)
-        object.__setattr__(self, "model", model)
-        object.__setattr__(self, "loads", MappingProxyType({
-            key: _number(value, f"/loads/{key}") for key, value in loads.items()
-        }))
+        object.__setattr__(self, "model", _freeze(model))
+        object.__setattr__(self, "loads", _freeze(loads))
+        object.__setattr__(self, "mesh", mesh)
+        if version in ("1.2", "1.3") and len(_json(self.to_dict()).encode("utf-8")) > _JSON_LIMIT:
+            raise ModelValidationError("", "size_limit", "normalized JSON is limited to 1 MiB")
 
     def to_dict(self):
         """Return the normalized JSON-compatible declaration."""
         return {
-            "schema_version": "1.0", "problem_type": self.problem_type, "units": dict(_SI),
-            "model": asdict(self.model), "loads": dict(self.loads), "analysis": {"type": "static"},
+            "schema_version": self.schema_version, "problem_type": self.problem_type, "units": dict(_SI),
+            "model": _plain(self.model) if self.mesh is not None else asdict(self.model),
+            "loads": _plain(self.loads), "analysis": {"type": "static"},
         }
 
 
 def validate_model(doc):
-    """Validate a mapping or UTF-8 JSON string/bytes, or accept a ModelSpec."""
-    return doc if type(doc) is ModelSpec else ModelSpec(doc)
+    """Validate a schema 1.0 or 1.1 single-solve declaration."""
+    return _validate_model(doc, ("1.0", "1.1"))
+
+
+def validate_load_case_model(doc):
+    """Validate a schema 1.2 or 1.3 declaration without solving the cases."""
+    return _validate_model(doc, ("1.2", "1.3"))
+
+
+def _validate_model(doc, versions):
+    if type(doc) is not ModelSpec:
+        return ModelSpec(doc, _versions=versions)
+    _choice(doc.schema_version, "/schema_version", versions, "unsupported_schema")
+    return doc
+
+
+def _physical_inputs(model):
+    if model.mesh is None:
+        return input_parameters(model.model, **model.loads)
+    payload = model.to_dict()
+    del payload["schema_version"]
+    payload["projection"] = "anf.planar_structure.v1"
+    return payload
 
 
 def canonical_input_hash(model):
     """Return the verification report's SHA-256 for the validated physical inputs."""
-    model = validate_model(model)
-    return _describe_case(input_parameters(model.model, **model.loads))[0]
+    return _describe_case(_physical_inputs(validate_model(model)))[0]

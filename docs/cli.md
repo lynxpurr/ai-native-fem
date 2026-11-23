@@ -10,6 +10,7 @@ anf solve examples/models/cantilever.json --reference cantilever.closed-form.v1 
 anf inspect beam-result --json
 anf solve examples/models/thick-q4.json --reference plate.navier-31.v1 --output thick-result --json
 anf solve examples/models/thin-q4.json --reference plate.thin-q4-navier-31.v1 --output thin-result --json
+anf solve examples/structures/portal.json --output portal-result --json
 anf validate examples/models/invalid-units.json --json
 ```
 
@@ -18,6 +19,12 @@ anf validate examples/models/invalid-units.json --json
 Its parent directory must already exist. `inspect` reads an existing result
 and returns the report, diagnostics and array metadata. Use the
 [Python artifact reader](model-format.md) to access the numeric arrays.
+
+`validate`, `solve` and `inspect` accept schema 1.0 beam/plate declarations
+and schema 1.1 planar structure declarations. Named load cases,
+combinations, end releases and rotational springs use schema 1.2/1.3 through
+the [Python batch entry point](load-cases.md); the CLI rejects those schemas
+with `unsupported_schema` and exit code 2.
 
 Pass a registered `--reference` to compare with an independent reference.
 Omitting the option evaluates the free-DOF residual. The thin Q4 example
