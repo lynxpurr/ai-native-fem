@@ -35,6 +35,7 @@ does not establish source rights. See the
 | `anf.artifacts.save_result`, `load_result` | Write and read versioned result manifests and numeric NPZ arrays. [Result 1.0](model-format.md#read-or-save-a-result-directory) · [Result 1.1](frame2d.md#results-and-sign-convention) |
 | `anf validate`, `anf solve`, `anf inspect` | Validate a declaration, write a static analysis result and inspect an artifact from the installed command line. [CLI guide](cli.md) |
 | `anf.studies.StudySpec`, `run_convergence`, `anf.reporting.write_report` | Beam and plate mesh studies with replayable JSON, Markdown, SVG and per-mesh results. [Convergence guide](convergence.md) |
+| `anf.parameter_studies.ParameterGrid`, `run_parameter_study`, `finite_difference_sensitivity` | Cantilever parameter grids and local finite differences with checkpointed samples, JSON and SVG. [Parameter studies](parameter-studies.md) |
 | `anf-mcp --workspace PATH` | Optional local stdio server for capabilities, validation, solves, studies and artifact inspection. [MCP guide](mcp.md) |
 
 The base installation uses NumPy 2.x and includes the Python and CLI
@@ -53,7 +54,7 @@ The three required installation jobs build a wheel and sdist from the exact
 Git tree and check their file lists, source and license bytes, package
 metadata, SHA-256 digests and wheel `RECORD`. Each package is installed in
 its own clean environment outside the checkout. The jobs run the installed
-test suite and four beam and plate example commands. The suite exercises
+test suite and the beam, plate and parameter-study examples. The suite exercises
 the planar structure declarations, F1–F4 cases, and result inspection
 through the installed Python, CLI and MCP entry points. The jobs exercise the
 MCP extra. The suite first runs without SciPy, then each installation checks

@@ -30,6 +30,7 @@ EXAMPLES = (
     ("plate_convergence.py",),
     ("plate_convergence.py", "--formulation", "mitc4_rectangle"),
     ("plate_locking.py",),
+    ("parameter-studies/cantilever.py", "parameter-study-example"),
 )
 CHECK_INSTALL = """
 import json
