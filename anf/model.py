@@ -180,6 +180,8 @@ class ModelSpec:
     model: Beam | Plate | Mapping
     loads: Mapping
     mesh: StructureMesh | None
+    analysis_type: str
+    modes: int | None
 
     def __init__(self, doc, *, _versions=("1.0", "1.1")):
         if isinstance(doc, (str, bytes)):
@@ -192,8 +194,14 @@ class ModelSpec:
         units = _fields(doc["units"], "/units", _SI)
         for name, expected in _SI.items():
             _choice(units[name], f"/units/{name}", (expected,), "unsupported_unit")
-        analysis = _fields(doc["analysis"], "/analysis", ("type",))
-        _choice(analysis["type"], "/analysis/type", ("static",), "unsupported_analysis")
+        if version == "1.4":
+            analysis = _fields(doc["analysis"], "/analysis", ("type",), {"modes": 6})
+            _choice(analysis["type"], "/analysis/type", ("modal",), "unsupported_analysis")
+            analysis_type, modes = "modal", _count(analysis["modes"], "/analysis/modes", 1, 20)
+        else:
+            analysis = _fields(doc["analysis"], "/analysis", ("type",))
+            _choice(analysis["type"], "/analysis/type", ("static",), "unsupported_analysis")
+            analysis_type, modes = "static", None
         mesh = None
         if kind == _STRUCTURE:
             from .structures import _structure
@@ -207,6 +215,8 @@ class ModelSpec:
         object.__setattr__(self, "model", _freeze(model))
         object.__setattr__(self, "loads", _freeze(loads))
         object.__setattr__(self, "mesh", mesh)
+        object.__setattr__(self, "analysis_type", analysis_type)
+        object.__setattr__(self, "modes", modes)
         if version in ("1.2", "1.3") and len(_json(self.to_dict()).encode("utf-8")) > _JSON_LIMIT:
             raise ModelValidationError("", "size_limit", "normalized JSON is limited to 1 MiB")
 
@@ -215,7 +225,9 @@ class ModelSpec:
         return {
             "schema_version": self.schema_version, "problem_type": self.problem_type, "units": dict(_SI),
             "model": _plain(self.model) if self.mesh is not None else asdict(self.model),
-            "loads": _plain(self.loads), "analysis": {"type": "static"},
+            "loads": _plain(self.loads),
+            "analysis": {"type": self.analysis_type,
+                         **({"modes": self.modes} if self.modes is not None else {})},
         }
 
 
@@ -227,6 +239,11 @@ def validate_model(doc):
 def validate_load_case_model(doc):
     """Validate a schema 1.2 or 1.3 declaration without solving the cases."""
     return _validate_model(doc, ("1.2", "1.3"))
+
+
+def validate_modal_model(doc):
+    """Validate a schema 1.4 modal declaration without assembling mass."""
+    return _validate_model(doc, ("1.4",))
 
 
 def _validate_model(doc, versions):
@@ -248,3 +265,8 @@ def _physical_inputs(model):
 def canonical_input_hash(model):
     """Return the verification report's SHA-256 for the validated physical inputs."""
     return _describe_case(_physical_inputs(validate_model(model)))[0]
+
+
+def canonical_modal_input_hash(model):
+    """Return the SHA-256 for a validated schema 1.4 modal declaration."""
+    return _describe_case(_physical_inputs(validate_modal_model(model)))[0]
