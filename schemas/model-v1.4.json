@@ -1,0 +1,353 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lynxpurr/ai-native-fem/develop/schemas/model-v1.4.json",
+  "title": "ANF model declaration 1.4",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.4"
+    },
+    "problem_type": {
+      "const": "planar_structure"
+    },
+    "units": {
+      "type": "object",
+      "properties": {
+        "length": {
+          "const": "m"
+        },
+        "force": {
+          "const": "N"
+        },
+        "stress": {
+          "const": "Pa"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "length",
+        "force",
+        "stress"
+      ]
+    },
+    "analysis": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "modal"
+        },
+        "modes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20,
+          "default": 6
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ]
+    },
+    "model": {
+      "type": "object",
+      "properties": {
+        "nodes": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}(?![\\s\\S])"
+          },
+          "additionalProperties": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "number"
+            }
+          },
+          "minProperties": 2,
+          "maxProperties": 200
+        },
+        "members": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}(?![\\s\\S])"
+          },
+          "additionalProperties": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "truss2d"
+                  },
+                  "i": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}(?![\\s\\S])"
+                  },
+                  "j": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}(?![\\s\\S])"
+                  },
+                  "young_modulus": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "area": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "elements": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": 1,
+                    "maximum": 1
+                  },
+                  "density": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "kind",
+                  "i",
+                  "j",
+                  "young_modulus",
+                  "area",
+                  "density"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "frame2d"
+                  },
+                  "i": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}(?![\\s\\S])"
+                  },
+                  "j": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}(?![\\s\\S])"
+                  },
+                  "young_modulus": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "area": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "second_moment": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "elements": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": 1,
+                    "maximum": 32
+                  },
+                  "density": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "kind",
+                  "i",
+                  "j",
+                  "young_modulus",
+                  "area",
+                  "second_moment",
+                  "density"
+                ]
+              }
+            ]
+          },
+          "minProperties": 1,
+          "maxProperties": 400
+        },
+        "supports": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}(?![\\s\\S])"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "ux": {
+                "type": "number"
+              },
+              "uy": {
+                "type": "number"
+              },
+              "rz": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": false,
+            "required": [],
+            "minProperties": 1
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "nodes",
+        "members",
+        "supports"
+      ]
+    },
+    "loads": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "problem_type",
+    "units",
+    "analysis",
+    "model",
+    "loads"
+  ],
+  "description": "Versioned SI inputs for consistent-mass planar modal analysis. Runtime validation also checks UTF-8 JSON byte limits, duplicate keys, finite floating-point representation, mass density and mesh budgets.",
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}(?![\\s\\S])"
+    },
+    "vector": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "case": {
+      "type": "object",
+      "properties": {
+        "nodal": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}(?![\\s\\S])"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "fx": {
+                "type": "number"
+              },
+              "fy": {
+                "type": "number"
+              },
+              "mz": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": false,
+            "required": []
+          }
+        },
+        "member_line": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/id"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "basis": {
+                "enum": [
+                  "local",
+                  "global"
+                ]
+              },
+              "i": {
+                "$ref": "#/$defs/vector"
+              },
+              "j": {
+                "$ref": "#/$defs/vector"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "basis",
+              "i",
+              "j"
+            ]
+          }
+        },
+        "self_weight": {
+          "type": "object",
+          "properties": {
+            "acceleration": {
+              "$ref": "#/$defs/vector"
+            },
+            "density": {
+              "type": "object",
+              "propertyNames": {
+                "$ref": "#/$defs/id"
+              },
+              "additionalProperties": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "acceleration",
+            "density"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "connection": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "release"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "rotational_spring"
+            },
+            "stiffness": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "stiffness"
+          ]
+        }
+      ]
+    }
+  }
+}
