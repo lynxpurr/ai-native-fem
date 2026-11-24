@@ -54,9 +54,10 @@ The CLI and MCP accept schema 1.0 and 1.1 single-solve declarations. Schema
 interfaces. The package remains linear static: 3D frames, shear deformation,
 dynamics, buckling, nonlinear analysis, shells and solids are not included.
 
-## Modal analysis in development
+## Modal analysis in 0.1.0a6
 
-ANF-010 adds schema 1.4 planar consistent-mass modal analysis on `develop`:
+The [0.1.0a6 release notes](releases/0.1.0a6.md) add schema 1.4 planar
+consistent-mass modal analysis:
 
 - `assemble_mass` for `truss2d`/`frame2d`, including transverse translational
   inertia and the Hermite frame mass.
@@ -66,8 +67,8 @@ ANF-010 adds schema 1.4 planar consistent-mass modal analysis on `develop`:
 - Python-only access through the `sparse` extra; the CLI and MCP do not expose
   mode analysis.
 
-The feature is not part of a public release yet. Plate mass matrices, shear
-deformation, rotary inertia and a sparse modal path remain separate designs.
+Plate mass matrices, shear deformation, rotary inertia and a sparse modal path
+remain separate designs.
 
 ## Plate research
 

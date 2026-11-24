@@ -2,20 +2,20 @@
 
 ANF is a Python research package for linear static finite element analysis of
 Euler–Bernoulli cantilevers, rectangular Reissner–Mindlin plates, and planar
-trusses and frames. The `v0.1.0a5` research prerelease adds planar statics,
-named load cases, an optional sparse solver, parameter studies and native mesh
-input to the existing model, result, CLI and MCP workflow.
-[GitHub prerelease](https://github.com/lynxpurr/ai-native-fem/releases/tag/v0.1.0a5) ·
-[Release notes](docs/releases/0.1.0a5.md)
+trusses and frames, with consistent-mass modal analysis for the planar models.
+The `v0.1.0a6` research prerelease adds schema 1.4 modal analysis, mass-normalized
+modes, frequencies and versioned modal result artifacts.
+[GitHub prerelease](https://github.com/lynxpurr/ai-native-fem/releases/tag/v0.1.0a6) ·
+[Release notes](docs/releases/0.1.0a6.md)
 
 ## Install
 
 Create and activate a virtual environment with Python 3.11 or newer.
-Download `ai_native_fem-0.1.0a5-py3-none-any.whl` from the prerelease and
+Download `ai_native_fem-0.1.0a6-py3-none-any.whl` from the prerelease and
 run this command from the directory containing the wheel.
 
 ```sh
-python -m pip install "./ai_native_fem-0.1.0a5-py3-none-any.whl"
+python -m pip install "./ai_native_fem-0.1.0a6-py3-none-any.whl"
 ```
 
 The base installation provides the Python API and the `anf` command. Pip
@@ -36,9 +36,9 @@ print(result.deflection[-1])  # approximately 0.0126984 m
 ### Command line
 
 Get the example inputs from the matching source distribution on the release
-page or the `v0.1.0a5` tag. Run these commands from the directory containing
+page or the `v0.1.0a6` tag. Run these commands from the directory containing
 `examples/`. Choose a fresh output directory each time you solve.
-[Tagged cantilever input](https://github.com/lynxpurr/ai-native-fem/blob/v0.1.0a5/examples/models/cantilever.json)
+[Tagged cantilever input](https://github.com/lynxpurr/ai-native-fem/blob/v0.1.0a6/examples/models/cantilever.json)
 
 ```sh
 anf validate examples/models/cantilever.json --json
@@ -76,6 +76,28 @@ Install `ai-native-fem[sparse]` and pass `{"backend": "scipy"}` as the
 `options` argument to `run_analysis` to select the optional sparse solver. The
 default remains dense. [Sparse guide](docs/sparse.md)
 
+## Run a modal analysis
+
+Schema 1.4 adds material density and a modal analysis type. Install the
+`sparse` extra for SciPy.
+
+```python
+from pathlib import Path
+from anf.application import run_modal
+
+result = run_modal(
+    Path("examples/structures/modal-cantilever.json").read_bytes(),
+    {"count": 3},
+)
+print(result.frequencies_hz)
+print(result.dof_labels)
+```
+
+A free planar model has three rigid modes; a supported model must have none.
+Requesting more modes than the free DOF count returns the available modes with
+`truncated` set. Modal artifacts store the model fingerprint, labels, arrays and
+diagnostics. [Modal guide](docs/modal.md)
+
 ## Mesh studies and local MCP
 
 - Run a mesh convergence study to compare explicit grids and save a replayable
@@ -90,7 +112,7 @@ default remains dense. [Sparse guide](docs/sparse.md)
 Install the wheel with the `mcp` extra to enable the server.
 
 ```sh
-python -m pip install "./ai_native_fem-0.1.0a5-py3-none-any.whl[mcp]"
+python -m pip install "./ai_native_fem-0.1.0a6-py3-none-any.whl[mcp]"
 ```
 
 Configure your client to launch `anf-mcp --workspace PATH`. Use an existing
@@ -112,6 +134,9 @@ writable directory for the local artifacts.
 - **Optional sparse backend.** Install the `sparse` extra to solve schema 1.0
   to 1.1 models with SciPy. The default remains dense, and the CLI, MCP and
   schema 1.2/1.3 batch workflows stay dense.
+- **Modal analysis.** Schema 1.4 planar `truss2d`/`frame2d` models with density,
+  consistent mass, mass-normalized modes, frequencies and modal result
+  artifacts. Requires the `sparse` extra; Python-only. [Modal guide](docs/modal.md)
 
 Use SI units. Dense assembly limits model size, and fine meshes can be
 poorly conditioned. The direct Python solvers raise `ArithmeticError` on
@@ -131,7 +156,7 @@ From a source checkout with a virtual environment active, install the test
 dependencies and run the suite.
 
 ```sh
-python -m pip install -e ".[test]"
+python -m pip install -e ".[test,sparse]"
 python -m pytest
 ```
 
