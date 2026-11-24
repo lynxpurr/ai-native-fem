@@ -149,8 +149,8 @@ extra files, non-finite arrays and unsupported schemas are rejected.
 
 The installation matrix runs without SciPy first and then with the `sparse`
 extra on Linux Python 3.11/3.12 and Windows 3.12. At this revision the base
-installation runs 420 tests with 46 skipped (30 sparse and 16 modal); installing
-the extra runs 466 tests.
+installation runs 420 tests with 32 skipped (30 sparse tests and two modal
+modules); installing the extra runs 466 tests.
 
 Uniform-pressure rectangles, one-plane cantilever bending, planar truss/frame
 statics, cantilever parameter studies, the documented native mesh projections
