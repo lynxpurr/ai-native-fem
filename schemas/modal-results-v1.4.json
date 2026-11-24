@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lynxpurr/ai-native-fem/develop/schemas/modal-results-v1.4.json",
+  "title": "ANF modal result manifest 1.4",
+  "description": "Manifest for a schema 1.4 modal result directory. The numeric arrays are stored in arrays.npz; runtime validation also checks finite values, shapes, the input hash and the array digest.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "model",
+    "input_hash",
+    "mode_count",
+    "rigid_mode_count",
+    "truncated",
+    "diagnostics",
+    "versions",
+    "dof_labels",
+    "arrays",
+    "arrays_sha256"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.4"
+    },
+    "kind": {
+      "const": "modal_result"
+    },
+    "model": {
+      "type": "object",
+      "description": "The normalized schema 1.4 model declaration."
+    },
+    "input_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "mode_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 20
+    },
+    "rigid_mode_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "truncated": {
+      "type": "boolean"
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "versions": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "minProperties": 1
+    },
+    "dof_labels": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 4,
+        "items": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ]
+        }
+      }
+    },
+    "arrays": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eigenvalues",
+        "omega_rad_s",
+        "frequencies_hz",
+        "modes",
+        "residuals"
+      ],
+      "properties": {
+        "eigenvalues": {
+          "$ref": "#/$defs/array"
+        },
+        "omega_rad_s": {
+          "$ref": "#/$defs/array"
+        },
+        "frequencies_hz": {
+          "$ref": "#/$defs/array"
+        },
+        "modes": {
+          "$ref": "#/$defs/array"
+        },
+        "residuals": {
+          "$ref": "#/$defs/array"
+        }
+      }
+    },
+    "arrays_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  },
+  "$defs": {
+    "array": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "shape",
+        "dtype"
+      ],
+      "properties": {
+        "shape": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "dtype": {
+          "const": "float64"
+        }
+      }
+    }
+  }
+}

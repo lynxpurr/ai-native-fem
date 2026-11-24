@@ -1,6 +1,6 @@
 # Run ANF through local MCP
 
-Download `ai_native_fem-0.1.0a5-py3-none-any.whl` from the [GitHub Releases
+Download `ai_native_fem-0.1.0a6-py3-none-any.whl` from the [GitHub Releases
 page](https://github.com/lynxpurr/ai-native-fem/releases). In an active
 Python environment, run one of the following commands from the directory
 containing the wheel.
@@ -8,13 +8,13 @@ containing the wheel.
 For Python and the `anf` command line:
 
 ```sh
-python -m pip install "./ai_native_fem-0.1.0a5-py3-none-any.whl"
+python -m pip install "./ai_native_fem-0.1.0a6-py3-none-any.whl"
 ```
 
 To also enable local MCP:
 
 ```sh
-python -m pip install "./ai_native_fem-0.1.0a5-py3-none-any.whl[mcp]"
+python -m pip install "./ai_native_fem-0.1.0a6-py3-none-any.whl[mcp]"
 ```
 
 Configure a stdio client to launch `anf-mcp --workspace PATH`, with an existing,
@@ -46,8 +46,8 @@ to 16 KiB, and study work to the declared mesh and output budgets.
 
 ## Run a real client
 
-The example model and study are in the matching `0.1.0a5` source distribution
-and the `v0.1.0a5` tag. Run the example from the root of the unpacked source
+The example model and study are in the matching `0.1.0a6` source distribution
+and the `v0.1.0a6` tag. Run the example from the root of the unpacked source
 distribution or tag checkout with the MCP extra installed.
 
 ```python

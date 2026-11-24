@@ -115,13 +115,45 @@ independent closed forms and the same residual gates as the existing solvers.
   thin Q4 locking case remains a failed comparison. Corrupt counts, duplicate
   IDs, unknown cells, undefined sets and over-budget documents are rejected.
 
+## Modal analysis
+
+Schema 1.4 modal analysis is checked by
+[`tests/test_modal.py`](../tests/test_modal.py),
+[`tests/test_modal_mass.py`](../tests/test_modal_mass.py) and
+[`tests/test_modal_artifacts.py`](../tests/test_modal_artifacts.py). The
+independent frequency anchors are:
+
+- fixed-free axial rod: `omega_n = (2n-1) pi / (2L) * sqrt(E/rho)`;
+- simply supported Euler–Bernoulli beam: `omega_n = (n pi / L)^2 *
+  sqrt(EI/(rho A))`;
+- cantilever Euler–Bernoulli beam: `omega_n = (beta_n L)^2 *
+  sqrt(EI/(rho A L^4))`.
+
+Observed relative errors at 16 elements, E=210 GPa, rho=7850 kg/m³, A=0.01 m²,
+I=1e-6 m⁴, L=2 m:
+
+| case | mode 1 | mode 2 | mode 3 |
+|---|---:|---:|---:|
+| cantilever frame | 1.31e-7 | 5.11e-6 | 3.98e-5 |
+| axial rod | 4.02e-4 | 3.62e-3 | 1.01e-2 |
+
+The cantilever gate is `1e-4`; the axial-rod gate is `2e-2` at 16 elements and
+the 8→16 sequence must decrease. A free planar frame has exactly three rigid
+modes; the first two frequencies are zero and the third is about `2.24e-5 Hz`,
+inside the `1e-3 Hz` rigid check. Elastic eigenpair residuals stay at most
+`1e-9`; rigid modes use the matrix-scaled residual with a `1e-8` gate.
+Renumbering preserves frequencies, a requested count beyond the available modes
+sets `truncated` without zero padding, and a nonzero modal support is rejected.
+Artifacts round-trip the model, labels, arrays and diagnostics; changed digests,
+extra files, non-finite arrays and unsupported schemas are rejected.
+
 The installation matrix runs without SciPy first and then with the `sparse`
 extra on Linux Python 3.11/3.12 and Windows 3.12. At this revision the base
-installation runs 412 tests with 30 sparse tests skipped; installing the extra
-runs 442 tests.
+installation runs 420 tests with 46 skipped (30 sparse and 16 modal); installing
+the extra runs 466 tests.
 
 Uniform-pressure rectangles, one-plane cantilever bending, planar truss/frame
-statics, cantilever parameter studies and the documented native mesh
-projections are the tested application families. The tests do not certify
+statics, cantilever parameter studies, the documented native mesh projections
+and schema 1.4 modal analysis are the tested application families. The tests do not certify
 arbitrary inputs or engineering use. Dense assembly also restricts model size;
 the sparse backend does not remove the declared limits.

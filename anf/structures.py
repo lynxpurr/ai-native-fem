@@ -61,7 +61,7 @@ def _known(name, entries, path, kind):
     return name
 
 
-def _members(entries, nodes, *, jointed=False):
+def _members(entries, nodes, *, jointed=False, modal=False):
     members = {}
     connected = set()
     frame_nodes = set()
@@ -70,6 +70,8 @@ def _members(entries, nodes, *, jointed=False):
         path = f"/model/members/{name}"
         base = ("kind", "i", "j", "young_modulus", "area")
         defaults = {"elements": 1, "second_moment": None}
+        if modal:
+            defaults["density"] = None
         if jointed:
             defaults["end_connections"] = {}
         value = _fields(value, path, base, defaults)
@@ -85,7 +87,11 @@ def _members(entries, nodes, *, jointed=False):
         connected.update(edge)
         is_frame = kind == "frame2d"
         fields = (*base, "second_moment") if is_frame else base
-        options = {"elements": 1, "end_connections": {}} if jointed and is_frame else {"elements": 1}
+        if modal:
+            fields = (*fields, "density")
+        options = {"elements": 1}
+        if jointed and is_frame:
+            options["end_connections"] = {}
         value = _fields(entries[name], path, fields, options)
         for field in fields[3:]:
             value[field] = _positive(value[field], f"{path}/{field}")
@@ -129,10 +135,15 @@ def _components(entries, path, nodes, frame_nodes, components, *, supports=False
 def _structure(parameters, loads, version):
     parameters = _fields(parameters, "/model", ("nodes", "members", "supports"))
     nodes = _nodes(parameters["nodes"])
-    members, frame_nodes = _members(parameters["members"], nodes, jointed=version == "1.3")
+    members, frame_nodes = _members(parameters["members"], nodes,
+                                    jointed=version == "1.3", modal=version == "1.4")
     supports = _components(parameters["supports"], "/model/supports", nodes, frame_nodes,
                            DISPLACEMENTS, supports=True)
     model = {"nodes": nodes, "members": members, "supports": supports}
+    if version == "1.4":
+        _fields(loads, "/loads", ())
+        mesh = _mesh(nodes, members, frame_nodes, original_axis=True)
+        return model, {}, mesh
     if version in ("1.2", "1.3"):
         from .loads import _load_definitions
 

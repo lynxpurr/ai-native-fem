@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.4",
+  "problem_type": "planar_structure",
+  "units": {
+    "length": "m",
+    "force": "N",
+    "stress": "Pa"
+  },
+  "model": {
+    "nodes": {
+      "a": [0, 0],
+      "b": [2, 0]
+    },
+    "members": {
+      "beam": {
+        "kind": "frame2d",
+        "i": "a",
+        "j": "b",
+        "elements": 16,
+        "young_modulus": 210000000000,
+        "area": 0.01,
+        "second_moment": 1e-06,
+        "density": 7850
+      }
+    },
+    "supports": {
+      "a": {"ux": 0, "uy": 0, "rz": 0}
+    }
+  },
+  "loads": {},
+  "analysis": {
+    "type": "modal",
+    "modes": 6
+  }
+}
