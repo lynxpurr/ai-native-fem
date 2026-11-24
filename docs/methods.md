@@ -94,6 +94,32 @@ remains `1e-8`, and the model fingerprint, result format and verification
 checks do not depend on the backend. The dense solver remains the default.
 See the [sparse guide](sparse.md).
 
+## Modal analysis
+
+Schema 1.4 forms the generalized eigenproblem `K phi = lambda M phi` on the free
+DOFs. The truss uses the 4×4 consistent mass matrix with axial and transverse
+translational inertia; it has no transverse stiffness. The frame uses the
+Hermite 6×6 consistent mass matrix, including the rotational inertia implied by
+the cubic transverse field. Both are rotated to global `ux/uy/rz` and assembled
+densely.
+
+Fixed supports are removed from both matrices. A free planar model has three
+rigid modes; a supported model must have none. The dense
+`scipy.linalg.eigh(K_ff, M_ff)` returns ascending eigenvalues and
+mass-normalized modes. Each mode is checked with a relative eigenpair residual:
+elastic modes use
+`||K phi - lambda M phi|| / (||K phi|| + |lambda| ||M phi||)`, while rigid modes
+use `||K phi|| / (||K||_F ||phi||)` because the elastic denominator vanishes.
+The solver also checks mass orthogonality and rejects negative eigenvalues,
+rigid-mode mismatches and zero-energy modes in supported models. Requesting more
+modes than the free DOF count returns the available modes and sets `truncated`;
+it never pads zero frequencies.
+
+Modal analysis is available through Python only. It requires the `sparse` extra
+(SciPy); a base installation reports `backend_unavailable`. The 600-DOF planar
+cap keeps the dense eigensolver practical, and no sparse modal path or plate
+mass matrix is included. See the [modal guide](modal.md).
+
 ## Restrictions
 
 The plate model is limited to homogeneous isotropic, rectangular and
@@ -102,7 +128,10 @@ member, support and load forms, with releases and springs only where declared.
 Schema 1.2/1.3 batch runs, parameter studies and native mesh import are Python
 interfaces; the CLI and MCP accept single-solve schema 1.0/1.1 declarations.
 Parameter studies cover a schema 1.0 cantilever with a tip force, and native
-meshes cover planar members and uniform rectangular plates. The
+meshes cover planar members and uniform rectangular plates. Modal analysis is
+limited to the planar constant-section truss/frame forms with consistent mass,
+small displacements and zero supports; it does not include plate mass, shear
+deformation, rotary inertia, damping or nonlinearity. The
 [validation record](validation.md) lists the tested material, thicknesses,
 boundary conditions and loads. Results require independent review for an
 engineering application.
