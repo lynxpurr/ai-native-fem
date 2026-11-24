@@ -8,8 +8,10 @@ import numpy as np
 
 from .artifacts import LoadCaseResults, ResultBundle, _DTYPE, _case_result, _result_arrays
 from .beam import Beam, _solve_cantilever, solve_cantilever
+from .dynamics import solve_modes
 from .loads import _case_hash, _request, _resolve_cases
-from .model import ModelValidationError, _choice, _fields, _physical_inputs, validate_load_case_model, validate_model
+from .model import (ModelValidationError, _choice, _fields, _physical_inputs,
+                    validate_load_case_model, validate_modal_model, validate_model)
 from .plate import _solve_plate, solve_plate
 from .recovery import _section_arrays
 from .structures import StructureSolveError, _solve_structure, solve_structure
@@ -52,6 +54,12 @@ def run_analysis(model, options=None):
 
     return ResultBundle(model, report, reference, versions, _result_arrays(result),
                         result.strain_energy, result.relative_residual, execution=execution)
+
+
+def run_modal(model, options=None):
+    """Solve the modal problem for a schema 1.4 declaration."""
+    options = _fields({} if options is None else options, "/options", (), {"count": None})
+    return solve_modes(validate_modal_model(model), count=options["count"])
 
 
 def run_load_cases(model, *, ids=None, stations=None):

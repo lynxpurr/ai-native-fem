@@ -37,13 +37,15 @@ does not establish source rights. See the
 | `anf.studies.StudySpec`, `run_convergence`, `anf.reporting.write_report` | Beam and plate mesh studies with replayable JSON, Markdown, SVG and per-mesh results. [Convergence guide](convergence.md) |
 | `anf.mesh_io.MeshDocument`, `import_mesh`, `validate_topology`, `anf.meshing.generate_supported_mesh` | Bounded native meshes, deterministic line/rectangle generation and explicit SI model bindings. [Native mesh guide](mesh-io.md) |
 | `anf.parameter_studies.ParameterGrid`, `run_parameter_study`, `finite_difference_sensitivity` | Cantilever parameter grids and local finite differences with checkpointed samples, JSON and SVG. [Parameter studies](parameter-studies.md) |
+| `anf.dynamics.assemble_mass`, `solve_modes`, `ModalResult`, `anf.application.run_modal` | Consistent-mass planar modal analysis for schema 1.4 trusses and frames, with mass-normalized modes, frequencies and residuals. Requires the `sparse` extra; Python only. [Modal guide](modal.md) |
+| `anf.dynamics.save_modal_result`, `load_modal_result` | Versioned modal artifacts with the model fingerprint, DOF labels, array digest, truncation diagnostics and read-only reload. [Modal guide](modal.md#artifacts) |
 | `anf-mcp --workspace PATH` | Optional local stdio server for capabilities, validation, solves, studies and artifact inspection. [MCP guide](mcp.md) |
 
 The base installation uses NumPy 2.x and includes the Python and CLI
 workflows. The `mcp` extra installs the MCP Python SDK and AnyIO to enable the
 stdio server. The `test` extra supplies pytest and build tooling. These
-dependencies and the optional SciPy backend are installed separately.
-Retain their applicable license files
+dependencies and the optional SciPy backend are installed separately. The same
+SciPy extra enables modal analysis. Retain their applicable license files
 when redistributing a complete environment. See [NOTICE](../NOTICE).
 List API and report-schema migration instructions in the release notes when
 behavior changes. The verification guide documents the preserved default Q4
