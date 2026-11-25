@@ -7,11 +7,10 @@ import platform
 
 import numpy as np
 
-from ..assembly import DenseAssembly
 from ..model import (ModelValidationError, _fields, canonical_modal_input_hash,
                      validate_modal_model)
-from ..structures import DISPLACEMENTS, _element
 from .mass import assemble_mass
+from .system import assemble_stiffness, free_dofs
 
 
 class ModalSolveError(ArithmeticError):
@@ -52,29 +51,12 @@ class ModalResult:
             raise ValueError("modal result values must be finite")
 
 
-def _stiffness(spec):
-    mesh = spec.mesh
-    assembly = DenseAssembly(mesh.dof_count)
-    for segment in mesh.segments:
-        member = spec.model["members"][segment.member]
-        width = 3 if member["kind"] == "frame2d" else 2
-        dofs = (*mesh.node_dofs[segment.nodes[0]][:width],
-                *mesh.node_dofs[segment.nodes[1]][:width])
-        assembly.add(dofs, _element(member, segment.geometry).stiffness())
-    return assembly.finish()
-
-
 def _free_dofs(spec, mesh):
-    node_indices = {key[1]: index for index, key in enumerate(mesh.node_order)
-                    if key[0] == "input"}
-    fixed = []
-    for name, row in spec.model["supports"].items():
-        for component, value in row.items():
-            if value != 0:
-                raise ModalSolveError("unsupported_constraint",
-                                      "modal supports must be zero displacements")
-            fixed.append(mesh.node_dofs[node_indices[name]][DISPLACEMENTS.index(component)])
-    return np.setdiff1d(np.arange(mesh.dof_count), fixed), bool(fixed)
+    """Modal wrapper that keeps the historical ModalSolveError contract."""
+    try:
+        return free_dofs(spec, mesh)
+    except ModelValidationError as error:
+        raise ModalSolveError(error.code, error.message) from error
 
 
 def _versions():
@@ -116,7 +98,7 @@ def solve_modes(model, count=None, options=None):
     free, supported = _free_dofs(spec, mesh)
     if not free.size:
         raise ModalSolveError("modal_no_free_dofs", "the model has no free degrees of freedom")
-    stiffness = _stiffness(spec)
+    stiffness = assemble_stiffness(spec)
     mass_matrix = assemble_mass(spec)
     stiffness_free = stiffness[np.ix_(free, free)]
     mass_free = mass_matrix.matrix[np.ix_(free, free)]

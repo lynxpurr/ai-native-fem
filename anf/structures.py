@@ -132,11 +132,93 @@ def _components(entries, path, nodes, frame_nodes, components, *, supports=False
     return normalized
 
 
-def _structure(parameters, loads, version):
+def _load_number(value, path):
+    try:
+        return _number(value, path)
+    except ModelValidationError as error:
+        raise ModelValidationError(error.path, "invalid_load", error.message) from error
+
+
+def _harmonic_component(item, field):
+    if isinstance(item, Mapping):
+        if "amplitude" not in item:
+            raise ModelValidationError(field, "unsupported_load",
+                                       "a harmonic load entry requires amplitude")
+        entry = _fields(item, field, ("amplitude",), {"phase_deg": 0.0})
+        amplitude = _load_number(entry["amplitude"], f"{field}/amplitude")
+        phase = _load_number(entry["phase_deg"], f"{field}/phase_deg")
+    else:
+        amplitude, phase = _load_number(item, field), 0.0
+    if not amplitude:
+        return None
+    return {"amplitude": amplitude, "phase_deg": phase}
+
+
+def _transient_component(item, field, grid):
+    if not isinstance(item, Mapping):
+        raise ModelValidationError(field, "invalid_type",
+                                   "expected a transient load preset object")
+    kind = _choice(item.get("kind"), f"{field}/kind",
+                   ("constant", "ramp", "harmonic"), "unsupported_load")
+    if "amplitude" not in item:
+        raise ModelValidationError(field, "unsupported_load",
+                                   "a load preset requires amplitude")
+    if kind == "constant":
+        entry = _fields(item, field, ("kind", "amplitude"))
+        result = {"kind": kind,
+                  "amplitude": _load_number(entry["amplitude"], f"{field}/amplitude")}
+    elif kind == "ramp":
+        entry = _fields(item, field, ("kind", "amplitude", "t0_s", "t1_s"))
+        amplitude = _load_number(entry["amplitude"], f"{field}/amplitude")
+        start = _load_number(entry["t0_s"], f"{field}/t0_s")
+        end = _load_number(entry["t1_s"], f"{field}/t1_s")
+        if not start < end or start < grid.start_s or end > grid.end_s:
+            raise ModelValidationError(field, "invalid_load",
+                                       "ramp times must satisfy start <= t0 < t1 <= end")
+        result = {"kind": kind, "amplitude": amplitude, "t0_s": start, "t1_s": end}
+    else:
+        entry = _fields(item, field, ("kind", "amplitude", "frequency_hz"),
+                        {"phase_deg": 0.0})
+        amplitude = _load_number(entry["amplitude"], f"{field}/amplitude")
+        frequency = _load_number(entry["frequency_hz"], f"{field}/frequency_hz")
+        if frequency <= 0:
+            raise ModelValidationError(f"{field}/frequency_hz", "invalid_load",
+                                       "the preset frequency must be positive")
+        result = {"kind": kind, "amplitude": amplitude, "frequency_hz": frequency,
+                  "phase_deg": _load_number(entry["phase_deg"], f"{field}/phase_deg")}
+    return None if not result["amplitude"] else result
+
+
+def _dynamics_nodal(loads, nodes, frame_nodes, dynamics):
+    loads = _fields(loads, "/loads", (), {"nodal": {}})
+    nodal = {}
+    for name, value in _named(loads["nodal"], "/loads/nodal"):
+        node_path = f"/loads/nodal/{name}"
+        _known(name, nodes, node_path, "node")
+        _fields(value, node_path, (), dict.fromkeys(FORCES))
+        row = {}
+        for key, item in value.items():
+            field = f"{node_path}/{key}"
+            if key == "mz" and name not in frame_nodes:
+                raise ModelValidationError(field, "unsupported_load",
+                                           "nodal moments require a frame node")
+            if dynamics["kind"] == "harmonic":
+                entry = _harmonic_component(item, field)
+            else:
+                entry = _transient_component(item, field, dynamics["time"])
+            if entry is not None:
+                row[key] = entry
+        if row:
+            nodal[name] = row
+    return nodal
+
+
+def _structure(parameters, loads, version, *, dynamics=None):
     parameters = _fields(parameters, "/model", ("nodes", "members", "supports"))
     nodes = _nodes(parameters["nodes"])
     members, frame_nodes = _members(parameters["members"], nodes,
-                                    jointed=version == "1.3", modal=version == "1.4")
+                                    jointed=version == "1.3",
+                                    modal=version in ("1.4", "1.5"))
     supports = _components(parameters["supports"], "/model/supports", nodes, frame_nodes,
                            DISPLACEMENTS, supports=True)
     model = {"nodes": nodes, "members": members, "supports": supports}
@@ -144,6 +226,12 @@ def _structure(parameters, loads, version):
         _fields(loads, "/loads", ())
         mesh = _mesh(nodes, members, frame_nodes, original_axis=True)
         return model, {}, mesh
+    if version == "1.5":
+        if dynamics is None:
+            raise TypeError("a schema 1.5 model requires its validated analysis options")
+        nodal = _dynamics_nodal(loads, nodes, frame_nodes, dynamics)
+        mesh = _mesh(nodes, members, frame_nodes, original_axis=True)
+        return model, {"nodal": nodal}, mesh
     if version in ("1.2", "1.3"):
         from .loads import _load_definitions
 

@@ -12,3 +12,4 @@ include schemas/model-v1.1.json schemas/result-v1.1.json
 include schemas/model-v1.2.json schemas/load-case-results-v1.2.json
 include schemas/model-v1.3.json schemas/load-case-results-v1.3.json
 include schemas/model-v1.4.json schemas/modal-results-v1.4.json
+include schemas/model-v1.5.json

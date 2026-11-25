@@ -4,7 +4,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from ..model import validate_modal_model
+from ..model import validate_dynamics_model
+from .system import dof_labels
 
 
 @dataclass(frozen=True)
@@ -36,16 +37,11 @@ def _frame_local(mass, length):
     ], dtype=float)
 
 
-def _labels(mesh):
-    labels = []
-    for key, dofs in zip(mesh.node_order, mesh.node_dofs):
-        labels.extend((*key, component) for component in ("ux", "uy", "rz")[:len(dofs)])
-    return tuple(labels)
 
 
 def assemble_mass(model):
     """Return the global consistent mass matrix for a schema 1.4 model."""
-    spec = validate_modal_model(model)
+    spec = validate_dynamics_model(model)
     mesh = spec.mesh
     if mesh is None:
         raise TypeError("modal model did not produce a structure mesh")
@@ -80,4 +76,4 @@ def assemble_mass(model):
     if eigenvalues[0] <= 1e-12 * max(eigenvalues[-1], 1.0):
         raise ArithmeticError("singular mass matrix")
     matrix.setflags(write=False)
-    return MassMatrix(matrix, _labels(mesh), total)
+    return MassMatrix(matrix, dof_labels(mesh), total)
