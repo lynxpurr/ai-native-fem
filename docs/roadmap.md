@@ -71,9 +71,10 @@ consistent-mass modal analysis:
 Plate mass matrices, shear deformation, rotary inertia and a sparse modal path
 remain separate designs.
 
-## Forced dynamics in develop
+## Forced dynamics in 0.1.0a7
 
-Schema 1.5 adds planar harmonic response and linear Newmark transients:
+The [0.1.0a7 release notes](releases/0.1.0a7.md) add planar harmonic response
+and linear Newmark transients:
 
 - complex amplitude/phase harmonic loads, direct per-frequency factorization and
   magnitude/phase results with conditioning diagnostics;

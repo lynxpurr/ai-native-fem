@@ -3,20 +3,20 @@
 ANF is a Python research package for linear finite element analysis of
 Euler–Bernoulli cantilevers, rectangular Reissner–Mindlin plates, and planar
 trusses and frames, with consistent-mass modal, harmonic and transient dynamics
-for the planar models. The `v0.1.0a6` research prerelease adds schema 1.4 modal
-analysis; schema 1.5 harmonic response and linear Newmark transients are
-available on `develop` and are not part of `v0.1.0a6`.
-[GitHub prerelease](https://github.com/lynxpurr/ai-native-fem/releases/tag/v0.1.0a6) ·
-[Release notes](docs/releases/0.1.0a6.md)
+for the planar models. The `v0.1.0a7` research prerelease adds schema 1.5
+harmonic response and linear Newmark transients; `v0.1.0a6` added schema 1.4
+modal analysis.
+[GitHub prerelease](https://github.com/lynxpurr/ai-native-fem/releases/tag/v0.1.0a7) ·
+[Release notes](docs/releases/0.1.0a7.md)
 
 ## Install
 
 Create and activate a virtual environment with Python 3.11 or newer.
-Download `ai_native_fem-0.1.0a6-py3-none-any.whl` from the prerelease and
+Download `ai_native_fem-0.1.0a7-py3-none-any.whl` from the prerelease and
 run this command from the directory containing the wheel.
 
 ```sh
-python -m pip install "./ai_native_fem-0.1.0a6-py3-none-any.whl"
+python -m pip install "./ai_native_fem-0.1.0a7-py3-none-any.whl"
 ```
 
 The base installation provides the Python API and the `anf` command. Pip
@@ -37,9 +37,9 @@ print(result.deflection[-1])  # approximately 0.0126984 m
 ### Command line
 
 Get the example inputs from the matching source distribution on the release
-page or the `v0.1.0a6` tag. Run these commands from the directory containing
+page or the `v0.1.0a7` tag. Run these commands from the directory containing
 `examples/`. Choose a fresh output directory each time you solve.
-[Tagged cantilever input](https://github.com/lynxpurr/ai-native-fem/blob/v0.1.0a6/examples/models/cantilever.json)
+[Tagged cantilever input](https://github.com/lynxpurr/ai-native-fem/blob/v0.1.0a7/examples/models/cantilever.json)
 
 ```sh
 anf validate examples/models/cantilever.json --json
@@ -140,7 +140,7 @@ energy series and summary peaks. [Forced-response guide](docs/forced-response.md
 Install the wheel with the `mcp` extra to enable the server.
 
 ```sh
-python -m pip install "./ai_native_fem-0.1.0a6-py3-none-any.whl[mcp]"
+python -m pip install "./ai_native_fem-0.1.0a7-py3-none-any.whl[mcp]"
 ```
 
 Configure your client to launch `anf-mcp --workspace PATH`. Use an existing
