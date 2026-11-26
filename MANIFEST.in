@@ -6,9 +6,11 @@ recursive-include examples *.py *.md
 recursive-include examples/models *.json
 recursive-include examples/parameter-studies *.json
 recursive-include examples/studies *.json
+recursive-include examples/dynamics *.json
 recursive-include examples/structures *.json
 include schemas/model-v1.json schemas/result-v1.json
 include schemas/model-v1.1.json schemas/result-v1.1.json
 include schemas/model-v1.2.json schemas/load-case-results-v1.2.json
 include schemas/model-v1.3.json schemas/load-case-results-v1.3.json
 include schemas/model-v1.4.json schemas/modal-results-v1.4.json
+include schemas/model-v1.5.json schemas/harmonic-results-v1.5.json schemas/transient-results-v1.5.json

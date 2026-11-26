@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field, replace
 from decimal import Decimal, InvalidOperation
 import json
 import math
@@ -122,6 +122,143 @@ def _count(value, path, minimum, maximum):
     return int(number)
 
 
+def _damping(value, path="/analysis/damping"):
+    row = _fields(value, path, (), {"kind": _RAYLEIGH, "alpha": 0.0, "beta": 0.0})
+    _choice(row["kind"], _pointer(path, "kind"), (_RAYLEIGH,), "unsupported_damping")
+    coefficients = []
+    for name in ("alpha", "beta"):
+        number = _number(row[name], _pointer(path, name))
+        if number < 0:
+            raise ModelValidationError(_pointer(path, name), "negative_damping",
+                                       "Rayleigh coefficients must be non-negative")
+        coefficients.append(number)
+    return Damping(*coefficients)
+
+
+def _frequencies(value, path="/analysis/frequencies_hz"):
+    if not isinstance(value, (list, tuple)):
+        raise ModelValidationError(path, "invalid_type", "expected an array of frequencies")
+    if not value:
+        raise ModelValidationError(path, "invalid_value", "expected at least one frequency")
+    if len(value) > _FREQUENCY_LIMIT:
+        raise ModelValidationError(path, "frequency_budget_exceeded",
+                                   f"at most {_FREQUENCY_LIMIT} frequencies are supported")
+    numbers = [_number(item, f"{path}/{index}") for index, item in enumerate(value)]
+    for index, number in enumerate(numbers):
+        if number < 0:
+            raise ModelValidationError(f"{path}/{index}", "negative_frequency",
+                                       "frequencies must be non-negative")
+        if index and number <= numbers[index - 1]:
+            raise ModelValidationError(f"{path}/{index}", "frequency_not_increasing",
+                                       "frequencies must be strictly increasing")
+    return tuple(numbers)
+
+
+def _time_grid(value, path="/analysis/time"):
+    row = _fields(value, path, (),
+                  {"start_s": None, "end_s": None, "steps": None, "times_s": None})
+    scalar = [row[key] is not None for key in ("start_s", "end_s", "steps")]
+    if row["times_s"] is not None:
+        if any(scalar):
+            raise ModelValidationError(path, "invalid_time_grid",
+                                       "expected either start_s/end_s/steps or times_s")
+        times = row["times_s"]
+        if not isinstance(times, (list, tuple)):
+            raise ModelValidationError(_pointer(path, "times_s"), "invalid_type",
+                                       "expected an array of times")
+        if len(times) < 2:
+            raise ModelValidationError(_pointer(path, "times_s"), "invalid_time_grid",
+                                       "expected at least two time points")
+        if len(times) > _TIME_POINT_LIMIT:
+            raise ModelValidationError(_pointer(path, "times_s"), "time_budget_exceeded",
+                                       f"at most {_TIME_POINT_LIMIT} time points are supported")
+        base = _pointer(path, "times_s")
+        numbers = [_number(item, f"{base}/{index}") for index, item in enumerate(times)]
+        if numbers[0] < 0:
+            raise ModelValidationError(f"{base}/0", "invalid_time_grid",
+                                       "start time must be non-negative")
+        intervals = []
+        for index in range(1, len(numbers)):
+            step = numbers[index] - numbers[index - 1]
+            if not step > 0:
+                raise ModelValidationError(f"{base}/{index}", "non_monotonic_time",
+                                           "times must be strictly increasing")
+            intervals.append(step)
+        for index, step in enumerate(intervals, start=1):
+            if abs(step - intervals[0]) > 1e-9 * intervals[0]:
+                raise ModelValidationError(f"{base}/{index}", "non_uniform_time",
+                                           "times must be uniformly spaced")
+        return TimeGrid(numbers[0], numbers[-1], len(numbers) - 1, intervals[0],
+                        tuple(numbers))
+    if not all(scalar):
+        missing = next(key for key in ("start_s", "end_s", "steps") if row[key] is None)
+        raise ModelValidationError(_pointer(path, missing), "missing_field", "field is required")
+    start = _number(row["start_s"], _pointer(path, "start_s"))
+    end = _number(row["end_s"], _pointer(path, "end_s"))
+    steps_path = _pointer(path, "steps")
+    count = _number(row["steps"], steps_path)
+    if count.is_integer() and count > _STEP_LIMIT:
+        raise ModelValidationError(steps_path, "time_budget_exceeded",
+                                   f"at most {_STEP_LIMIT} steps are supported")
+    steps = _count(row["steps"], steps_path, 1, _STEP_LIMIT)
+    if start < 0:
+        raise ModelValidationError(_pointer(path, "start_s"), "invalid_time_grid",
+                                   "start time must be non-negative")
+    if end <= start:
+        raise ModelValidationError(_pointer(path, "end_s"), "invalid_time_grid",
+                                   "end time must be greater than the start time")
+    step = (end - start) / steps
+    if not math.isfinite(step) or step <= 0:
+        raise ModelValidationError(_pointer(path, "steps"), "invalid_time_grid",
+                                   "the time step must be finite and positive")
+    return TimeGrid(start, end, steps, step,
+                    tuple(start + index * step for index in range(steps + 1)))
+
+
+def _dynamics_analysis(analysis):
+    if not isinstance(analysis, Mapping):
+        raise ModelValidationError("/analysis", "invalid_type", "expected an object")
+    kind = _choice(analysis.get("type"), "/analysis/type", (_HARMONIC, _TRANSIENT),
+                   "unsupported_analysis")
+    if kind == _HARMONIC:
+        row = _fields(analysis, "/analysis", ("type", "frequencies_hz"), {"damping": {}})
+        options = DynamicsOptions(kind, _damping(row["damping"]),
+                                  frequencies_hz=_frequencies(row["frequencies_hz"]))
+        return kind, options, None
+    row = _fields(analysis, "/analysis", ("type", "time"),
+                  {"damping": {}, "initial_state": {}})
+    options = DynamicsOptions(kind, _damping(row["damping"]), time=_time_grid(row["time"]))
+    return kind, options, row["initial_state"]
+
+
+def _initial_state(value, model):
+    from .structures import DISPLACEMENTS, _components
+
+    block = _fields(value, "/analysis/initial_state", (), {"displacement": {}, "velocity": {}})
+    frame_nodes = {node for member in model["members"].values()
+                   if member["kind"] == "frame2d" for node in (member["i"], member["j"])}
+    supports = model["supports"]
+
+    def parse(entries, path):
+        try:
+            row = _components(entries, path, model["nodes"], frame_nodes, DISPLACEMENTS)
+        except ModelValidationError as error:
+            if error.code in ("inactive_dof", "unknown_field", "invalid_value"):
+                raise ModelValidationError(error.path, "unsupported_initial_condition",
+                                           error.message) from error
+            raise
+        for name, components in row.items():
+            for component in components:
+                if component in supports.get(name, {}):
+                    raise ModelValidationError(
+                        f"{path}/{name}/{component}", "unsupported_initial_condition",
+                        "initial state on a fixed DOF is not supported")
+        return _freeze(row)
+
+    return (parse(block["displacement"], "/analysis/initial_state/displacement"),
+            parse(block["velocity"], "/analysis/initial_state/velocity"))
+
+
 def _beam(parameters, loads):
     positive_fields = ("length", "young_modulus", "second_moment")
     parameters = _fields(parameters, "/model", positive_fields, {"elements": 8})
@@ -171,6 +308,64 @@ def _plain(value):
     return value
 
 
+_RAYLEIGH = "rayleigh"
+_HARMONIC = "harmonic"
+_TRANSIENT = "transient"
+_FREQUENCY_LIMIT = 200
+_STEP_LIMIT = 5000
+_TIME_POINT_LIMIT = _STEP_LIMIT + 1
+_STATE_LIMIT = 1_200_000
+
+
+@dataclass(frozen=True, slots=True)
+class Damping:
+    """Rayleigh damping coefficients in their SI units."""
+
+    alpha: float
+    beta: float
+
+    def to_dict(self):
+        return {"kind": _RAYLEIGH, "alpha": self.alpha, "beta": self.beta}
+
+
+@dataclass(frozen=True, slots=True)
+class TimeGrid:
+    """A validated uniform time grid with its materialized samples."""
+
+    start_s: float
+    end_s: float
+    steps: int
+    dt_s: float
+    times_s: tuple
+
+    def to_dict(self):
+        return {"start_s": self.start_s, "end_s": self.end_s, "steps": self.steps}
+
+
+@dataclass(frozen=True, slots=True)
+class DynamicsOptions:
+    """Validated harmonic or transient options, without any solver state."""
+
+    kind: str
+    damping: Damping
+    frequencies_hz: tuple = ()
+    time: TimeGrid | None = None
+    initial_displacement: Mapping = field(
+        default_factory=lambda: MappingProxyType({}))
+    initial_velocity: Mapping = field(
+        default_factory=lambda: MappingProxyType({}))
+
+    def to_analysis_dict(self):
+        if self.kind == _HARMONIC:
+            return {"type": _HARMONIC,
+                    "frequencies_hz": list(self.frequencies_hz),
+                    "damping": self.damping.to_dict()}
+        return {"type": _TRANSIENT, "time": self.time.to_dict(),
+                "damping": self.damping.to_dict(),
+                "initial_state": {"displacement": _plain(self.initial_displacement),
+                                  "velocity": _plain(self.initial_velocity)}}
+
+
 @dataclass(frozen=True, slots=True, init=False)
 class ModelSpec:
     """An immutable, validated static declaration with explicit defaults."""
@@ -182,6 +377,7 @@ class ModelSpec:
     mesh: StructureMesh | None
     analysis_type: str
     modes: int | None
+    dynamics: DynamicsOptions | None
 
     def __init__(self, doc, *, _versions=("1.0", "1.1")):
         if isinstance(doc, (str, bytes)):
@@ -194,10 +390,15 @@ class ModelSpec:
         units = _fields(doc["units"], "/units", _SI)
         for name, expected in _SI.items():
             _choice(units[name], f"/units/{name}", (expected,), "unsupported_unit")
+        dynamics = None
+        state_block = None
         if version == "1.4":
             analysis = _fields(doc["analysis"], "/analysis", ("type",), {"modes": 6})
             _choice(analysis["type"], "/analysis/type", ("modal",), "unsupported_analysis")
             analysis_type, modes = "modal", _count(analysis["modes"], "/analysis/modes", 1, 20)
+        elif version == "1.5":
+            analysis_type, dynamics, state_block = _dynamics_analysis(doc["analysis"])
+            modes = None
         else:
             analysis = _fields(doc["analysis"], "/analysis", ("type",))
             _choice(analysis["type"], "/analysis/type", ("static",), "unsupported_analysis")
@@ -206,10 +407,21 @@ class ModelSpec:
         if kind == _STRUCTURE:
             from .structures import _structure
 
-            model, loads, mesh = _structure(doc["model"], doc["loads"], version)
+            options = (None if dynamics is None else
+                       {"kind": dynamics.kind, "time": dynamics.time})
+            model, loads, mesh = _structure(doc["model"], doc["loads"], version,
+                                            dynamics=options)
         else:
             model, loads = (_beam if kind == _BEAM else _plate)(doc["model"], doc["loads"])
             loads = {key: _number(value, f"/loads/{key}") for key, value in loads.items()}
+        if dynamics is not None and dynamics.kind == _TRANSIENT:
+            displacement, velocity = _initial_state(state_block, model)
+            dynamics = replace(dynamics, initial_displacement=displacement,
+                               initial_velocity=velocity)
+            points = mesh.dof_count * (dynamics.time.steps + 1)
+            if points > _STATE_LIMIT:
+                raise ModelValidationError("/analysis/time", "time_budget_exceeded",
+                                           f"at most {_STATE_LIMIT} DOF-time points are supported")
         object.__setattr__(self, "schema_version", version)
         object.__setattr__(self, "problem_type", kind)
         object.__setattr__(self, "model", _freeze(model))
@@ -217,17 +429,22 @@ class ModelSpec:
         object.__setattr__(self, "mesh", mesh)
         object.__setattr__(self, "analysis_type", analysis_type)
         object.__setattr__(self, "modes", modes)
+        object.__setattr__(self, "dynamics", dynamics)
         if version in ("1.2", "1.3") and len(_json(self.to_dict()).encode("utf-8")) > _JSON_LIMIT:
             raise ModelValidationError("", "size_limit", "normalized JSON is limited to 1 MiB")
 
     def to_dict(self):
         """Return the normalized JSON-compatible declaration."""
+        if self.dynamics is not None:
+            analysis = self.dynamics.to_analysis_dict()
+        else:
+            analysis = {"type": self.analysis_type,
+                        **({"modes": self.modes} if self.modes is not None else {})}
         return {
             "schema_version": self.schema_version, "problem_type": self.problem_type, "units": dict(_SI),
             "model": _plain(self.model) if self.mesh is not None else asdict(self.model),
             "loads": _plain(self.loads),
-            "analysis": {"type": self.analysis_type,
-                         **({"modes": self.modes} if self.modes is not None else {})},
+            "analysis": analysis,
         }
 
 
@@ -244,6 +461,11 @@ def validate_load_case_model(doc):
 def validate_modal_model(doc):
     """Validate a schema 1.4 modal declaration without assembling mass."""
     return _validate_model(doc, ("1.4",))
+
+
+def validate_dynamics_model(doc):
+    """Validate a schema 1.4 modal or 1.5 forced-dynamics declaration."""
+    return _validate_model(doc, ("1.4", "1.5"))
 
 
 def _validate_model(doc, versions):
@@ -270,3 +492,8 @@ def canonical_input_hash(model):
 def canonical_modal_input_hash(model):
     """Return the SHA-256 for a validated schema 1.4 modal declaration."""
     return _describe_case(_physical_inputs(validate_modal_model(model)))[0]
+
+
+def canonical_dynamics_input_hash(model):
+    """Return the SHA-256 for a validated schema 1.4 or 1.5 declaration."""
+    return _describe_case(_physical_inputs(validate_dynamics_model(model)))[0]

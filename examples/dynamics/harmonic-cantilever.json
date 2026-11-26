@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.5",
+  "problem_type": "planar_structure",
+  "units": {"length": "m", "force": "N", "stress": "Pa"},
+  "model": {
+    "nodes": {"base": [0, 0], "tip": [2, 0]},
+    "members": {
+      "beam": {
+        "kind": "frame2d",
+        "i": "base",
+        "j": "tip",
+        "elements": 16,
+        "young_modulus": 210000000000.0,
+        "area": 0.01,
+        "second_moment": 0.000001,
+        "density": 7850.0
+      }
+    },
+    "supports": {"base": {"ux": 0, "uy": 0, "rz": 0}}
+  },
+  "loads": {
+    "nodal": {"tip": {"fy": {"amplitude": 1000.0, "phase_deg": 0.0}}}
+  },
+  "analysis": {
+    "type": "harmonic",
+    "frequencies_hz": [0.0, 3.617893, 7.235786, 14.471572, 20.0],
+    "damping": {"kind": "rayleigh", "alpha": 1.720507, "beta": 0.00004743437}
+  }
+}

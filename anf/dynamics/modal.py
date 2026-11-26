@@ -1,17 +1,14 @@
 """Dense generalized modal analysis for schema 1.4 planar structures."""
 
 from dataclasses import dataclass
-from importlib.metadata import PackageNotFoundError, version
 import math
-import platform
 
 import numpy as np
 
-from ..assembly import DenseAssembly
 from ..model import (ModelValidationError, _fields, canonical_modal_input_hash,
                      validate_modal_model)
-from ..structures import DISPLACEMENTS, _element
 from .mass import assemble_mass
+from .system import assemble_stiffness, free_dofs, versions
 
 
 class ModalSolveError(ArithmeticError):
@@ -52,44 +49,12 @@ class ModalResult:
             raise ValueError("modal result values must be finite")
 
 
-def _stiffness(spec):
-    mesh = spec.mesh
-    assembly = DenseAssembly(mesh.dof_count)
-    for segment in mesh.segments:
-        member = spec.model["members"][segment.member]
-        width = 3 if member["kind"] == "frame2d" else 2
-        dofs = (*mesh.node_dofs[segment.nodes[0]][:width],
-                *mesh.node_dofs[segment.nodes[1]][:width])
-        assembly.add(dofs, _element(member, segment.geometry).stiffness())
-    return assembly.finish()
-
-
 def _free_dofs(spec, mesh):
-    node_indices = {key[1]: index for index, key in enumerate(mesh.node_order)
-                    if key[0] == "input"}
-    fixed = []
-    for name, row in spec.model["supports"].items():
-        for component, value in row.items():
-            if value != 0:
-                raise ModalSolveError("unsupported_constraint",
-                                      "modal supports must be zero displacements")
-            fixed.append(mesh.node_dofs[node_indices[name]][DISPLACEMENTS.index(component)])
-    return np.setdiff1d(np.arange(mesh.dof_count), fixed), bool(fixed)
-
-
-def _versions():
+    """Modal wrapper that keeps the historical ModalSolveError contract."""
     try:
-        package = version("ai-native-fem")
-    except PackageNotFoundError:
-        package = "uninstalled"
-    try:
-        import scipy
-    except ImportError:  # pragma: no cover - solve_modes imports SciPy first
-        scipy_version = "uninstalled"
-    else:
-        scipy_version = scipy.__version__
-    return {"anf": package, "python": platform.python_version(),
-            "numpy": np.__version__, "scipy": scipy_version}
+        return free_dofs(spec, mesh)
+    except ModelValidationError as error:
+        raise ModalSolveError(error.code, error.message) from error
 
 
 def solve_modes(model, count=None, options=None):
@@ -116,7 +81,7 @@ def solve_modes(model, count=None, options=None):
     free, supported = _free_dofs(spec, mesh)
     if not free.size:
         raise ModalSolveError("modal_no_free_dofs", "the model has no free degrees of freedom")
-    stiffness = _stiffness(spec)
+    stiffness = assemble_stiffness(spec)
     mass_matrix = assemble_mass(spec)
     stiffness_free = stiffness[np.ix_(free, free)]
     mass_free = mass_matrix.matrix[np.ix_(free, free)]
@@ -188,7 +153,7 @@ def solve_modes(model, count=None, options=None):
         rigid_mode_count=rigid_count,
         truncated=truncated,
         diagnostics=("modal_truncated",) if truncated else (),
-        versions=_versions(),
+        versions=versions(),
         input_hash=canonical_modal_input_hash(spec),
     )
 
