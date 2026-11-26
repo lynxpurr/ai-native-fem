@@ -7,7 +7,8 @@ import pytest
 
 from anf.dynamics.system import assemble_stiffness, free_dofs
 from anf.model import ModelValidationError, canonical_buckling_input_hash, validate_buckling_model
-from anf.stability import BucklingError, PreloadResult, assemble_geometric, solve_preload
+from anf.stability import (BucklingError, PreloadResult, assemble_geometric,
+                           solve_buckling, solve_preload)
 
 UNITS = {"length": "m", "force": "N", "stress": "Pa"}
 E, A, I, L = 210e9, 0.01, 1e-6, 2.0
@@ -139,3 +140,127 @@ def test_schema_version_and_density_are_strict():
     doc = model()
     doc["model"]["members"]["col"]["density"] = 7850.0
     assert code_of(doc)[0] == "unknown_field"
+
+
+# --- B1/B2 and the buckling eigensolver ------------------------------------------
+
+CANTILEVER = {"base": {"ux": 0, "uy": 0, "rz": 0}}
+PINNED = {"base": {"ux": 0, "uy": 0}, "tip": {"uy": 0}}
+GUIDED = {"base": {"ux": 0, "uy": 0, "rz": 0}, "tip": {"uy": 0, "rz": 0}}
+P0 = 1000.0
+
+
+def _scipy():
+    return pytest.importorskip("scipy.linalg")
+
+
+def euler(supports):
+    if supports is CANTILEVER:
+        return math.pi**2 * E * I / (4 * L**2)
+    if supports is PINNED:
+        return math.pi**2 * E * I / L**2
+    return 4 * math.pi**2 * E * I / L**2
+
+
+def test_cantilever_euler_factor_and_mesh_convergence():
+    _scipy()
+    exact = euler(CANTILEVER)
+    errors = {}
+    for elements in (8, 16, 32):
+        result = solve_buckling(model(supports=CANTILEVER, elements=elements))
+        errors[elements] = abs(result.critical_factor * P0 - exact) / exact
+    assert errors[16] <= 1e-6
+    assert errors[32] <= 1e-7
+    for coarse, fine in ((8, 16), (16, 32)):
+        assert 8 <= errors[coarse] / errors[fine] <= 32
+
+
+def test_pinned_pinned_euler_factor():
+    _scipy()
+    result = solve_buckling(model(supports=PINNED))
+    exact = euler(PINNED)
+    assert abs(result.critical_factor * P0 - exact) / exact <= 1e-5
+
+
+def test_fixed_fixed_euler_factor():
+    _scipy()
+    result = solve_buckling(model(supports=GUIDED))
+    exact = euler(GUIDED)
+    assert abs(result.critical_factor * P0 - exact) / exact <= 2e-4
+
+
+def test_reference_load_scaling_invariance():
+    _scipy()
+    physical = []
+    factors = []
+    for scale in (0.5, 1.0, 2.0):
+        result = solve_buckling(model(loads={"nodal": {"tip": {"fx": -P0 * scale}}}))
+        factors.append(result.critical_factor)
+        physical.append(result.critical_factor * P0 * scale)
+    assert factors[0] == pytest.approx(2 * factors[1], rel=1e-12)
+    assert factors[2] == pytest.approx(0.5 * factors[1], rel=1e-12)
+    for value in physical[1:]:
+        assert abs(value - physical[0]) / physical[0] <= 1e-12
+
+
+def test_eigenpair_residual_and_orthonormality():
+    _scipy()
+    doc = model()
+    result = solve_buckling(doc)
+    assert result.residuals.max() <= 1e-9
+    assert result.preload_residual <= 1e-8
+    spec = validate_buckling_model(doc)
+    free, _ = free_dofs(spec, spec.mesh)
+    stiffness = assemble_stiffness(spec)[np.ix_(free, free)]
+    shapes = result.modes[free]
+    error = np.max(np.abs(shapes.T @ stiffness @ shapes - np.identity(shapes.shape[1])))
+    assert error <= 1e-8
+
+
+def test_result_contract_and_sign_convention():
+    _scipy()
+    doc = model()
+    result = solve_buckling(doc, modes=3)
+    assert result.critical_factor == result.factors[0]
+    assert result.factors.shape == (3,)
+    assert np.all(np.diff(result.factors) >= 0)
+    assert result.modes.shape == (51, 3)
+    assert result.residuals.shape == (3,)
+    assert result.dof_labels[0] == ("input", "base", "ux")
+    fixed = [index for index, label in enumerate(result.dof_labels) if label[1] == "base"]
+    assert np.all(result.modes[fixed] == 0)
+    for column in range(3):
+        phi = result.modes[:, column]
+        assert phi[int(np.argmax(np.abs(phi)))] > 0
+    assert result.axial_forces == pytest.approx(tuple([-P0] * 16), rel=1e-12)
+
+
+def test_tension_and_zero_preload_have_no_factor():
+    _scipy()
+    for loads in ({"nodal": {"tip": {"fx": P0}}}, {}):
+        with pytest.raises(BucklingError) as info:
+            solve_buckling(model(loads=loads))
+        assert info.value.code == "buckling_no_positive_factor"
+
+
+def test_singular_stiffness_is_reported_as_a_mechanism(monkeypatch):
+    _scipy()
+    import scipy.linalg
+
+    def explode(*args, **kwargs):
+        raise np.linalg.LinAlgError("forced")
+
+    monkeypatch.setattr(scipy.linalg, "eigh", explode)
+    with pytest.raises(BucklingError) as info:
+        solve_buckling(model())
+    assert info.value.code == "buckling_mechanism"
+
+
+def test_mode_argument_bounds():
+    with pytest.raises(ModelValidationError) as info:
+        solve_buckling(model(), modes=0)
+    assert info.value.code == "invalid_value"
+    with pytest.raises(ModelValidationError):
+        solve_buckling(model(), modes=21)
+    with pytest.raises(ModelValidationError):
+        solve_buckling(model(), modes="3")
