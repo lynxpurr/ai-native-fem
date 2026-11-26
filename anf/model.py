@@ -311,6 +311,7 @@ def _plain(value):
 _RAYLEIGH = "rayleigh"
 _HARMONIC = "harmonic"
 _TRANSIENT = "transient"
+_BUCKLING = "buckling"
 _FREQUENCY_LIMIT = 200
 _STEP_LIMIT = 5000
 _TIME_POINT_LIMIT = _STEP_LIMIT + 1
@@ -399,6 +400,10 @@ class ModelSpec:
         elif version == "1.5":
             analysis_type, dynamics, state_block = _dynamics_analysis(doc["analysis"])
             modes = None
+        elif version == "1.6":
+            analysis = _fields(doc["analysis"], "/analysis", ("type",), {"modes": 4})
+            _choice(analysis["type"], "/analysis/type", (_BUCKLING,), "unsupported_analysis")
+            analysis_type, modes = _BUCKLING, _count(analysis["modes"], "/analysis/modes", 1, 20)
         else:
             analysis = _fields(doc["analysis"], "/analysis", ("type",))
             _choice(analysis["type"], "/analysis/type", ("static",), "unsupported_analysis")
@@ -414,6 +419,13 @@ class ModelSpec:
         else:
             model, loads = (_beam if kind == _BEAM else _plate)(doc["model"], doc["loads"])
             loads = {key: _number(value, f"/loads/{key}") for key, value in loads.items()}
+        if version == "1.6":
+            for name, row in model["supports"].items():
+                for component, value in row.items():
+                    if value != 0:
+                        raise ModelValidationError(
+                            f"/model/supports/{name}/{component}", "unsupported_constraint",
+                            "buckling supports must be zero displacements")
         if dynamics is not None and dynamics.kind == _TRANSIENT:
             displacement, velocity = _initial_state(state_block, model)
             dynamics = replace(dynamics, initial_displacement=displacement,
@@ -468,6 +480,11 @@ def validate_dynamics_model(doc):
     return _validate_model(doc, ("1.4", "1.5"))
 
 
+def validate_buckling_model(doc):
+    """Validate a schema 1.6 linear-buckling declaration."""
+    return _validate_model(doc, ("1.6",))
+
+
 def _validate_model(doc, versions):
     if type(doc) is not ModelSpec:
         return ModelSpec(doc, _versions=versions)
@@ -497,3 +514,8 @@ def canonical_modal_input_hash(model):
 def canonical_dynamics_input_hash(model):
     """Return the SHA-256 for a validated schema 1.4 or 1.5 declaration."""
     return _describe_case(_physical_inputs(validate_dynamics_model(model)))[0]
+
+
+def canonical_buckling_input_hash(model):
+    """Return the SHA-256 for a validated schema 1.6 buckling declaration."""
+    return _describe_case(_physical_inputs(validate_buckling_model(model)))[0]
