@@ -7,7 +7,7 @@ input normalization, load-scale-independent residuals, numeric range failures
 and rejection of non-finite or unbalanced solutions: 67 cases in total, passing
 in both Linux environments. CI builds distributions and
 runs tests against the installed wheel outside the checkout.
-This record covers the tested prototype and the 0.1.0a5 and 0.1.0a6 additions; it
+This record covers the tested prototype and the 0.1.0a5, 0.1.0a6 and 0.1.0a7 additions; it
 does not certify another development version of ANF. See [methods](methods.md) for
 equations and restrictions.
 
