@@ -157,14 +157,23 @@ nonzero initial state matches its analytic decay, and summary peaks and energy
 are bitwise identical to recomputation from the stored arrays. Undamped exact
 resonance is rejected rather than reported as a finite amplitude.
 
+For schema 1.6 buckling, the fixed-free, pinned-pinned and fixed-fixed Euler
+loads converge at fourth order: 16-element errors are `1.29e-7`, `2.06e-6` and
+`3.28e-5`, and the halving ratio is `15.6`–`16.0`. Scaling the reference load
+leaves the physical critical load invariant to `1e-12`; the preload residual
+stays below `2.3e-14` and the eigenpair residual below `5.1e-11`. `K_g` is
+negative semidefinite under compression and positive semidefinite under tension,
+and tension-only or mechanism states are rejected without a factor.
+
 The installation matrix runs without SciPy first and then with the `sparse`
 extra on Linux Python 3.11/3.12 and Windows 3.12. At this revision the base
-installation runs 449 tests with 60 skipped (30 sparse tests, two modal modules
-and 28 forced-response solver tests); installing the extra runs 523 tests.
+installation runs 464 tests with 68 skipped (30 sparse tests, two modal modules,
+28 forced-response solver tests and eight buckling solver tests); installing the
+extra runs 546 tests.
 
 Uniform-pressure rectangles, one-plane cantilever bending, planar truss/frame
 statics, cantilever parameter studies, the documented native mesh projections,
-schema 1.4 modal analysis and schema 1.5 harmonic and transient forced dynamics
-are the tested application families. The tests do not certify
+schema 1.4 modal analysis, schema 1.5 harmonic and transient forced dynamics and
+schema 1.6 linearized elastic buckling are the tested application families. The tests do not certify
 arbitrary inputs or engineering use. Dense assembly also restricts model size;
 the sparse backend does not remove the declared limits.

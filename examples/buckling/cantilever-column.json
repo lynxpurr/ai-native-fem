@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.6",
+  "problem_type": "planar_structure",
+  "units": {"length": "m", "force": "N", "stress": "Pa"},
+  "model": {
+    "nodes": {"base": [0, 0], "tip": [2, 0]},
+    "members": {"col": {"kind": "frame2d", "i": "base", "j": "tip", "elements": 16,
+                        "young_modulus": 210000000000.0, "area": 0.01,
+                        "second_moment": 0.000001}},
+    "supports": {"base": {"ux": 0, "uy": 0, "rz": 0}}
+  },
+  "loads": {"nodal": {"tip": {"fx": -1000.0}}},
+  "analysis": {"type": "buckling", "modes": 3}
+}
