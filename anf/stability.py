@@ -5,9 +5,11 @@ import math
 
 import numpy as np
 
-from .dynamics.system import dof_labels, versions
+from .dynamics.system import assemble_stiffness, dof_labels, free_dofs, versions
 from .model import (ModelValidationError, canonical_buckling_input_hash,
                     validate_buckling_model)
+
+_MAX_EIGEN_RESIDUAL = 1e-9
 
 
 class BucklingError(ArithmeticError):
@@ -134,4 +136,125 @@ def solve_preload(model):
     return preload
 
 
-__all__ = ["BucklingError", "PreloadResult", "assemble_geometric", "solve_preload"]
+
+
+@dataclass(frozen=True, slots=True)
+class BucklingResult:
+    """Positive load factors and K-orthonormal buckling modes."""
+
+    model: object
+    factors: np.ndarray
+    modes: np.ndarray
+    residuals: np.ndarray
+    axial_forces: tuple
+    preload_residual: float
+    dof_labels: tuple
+    diagnostics: tuple
+    versions: dict
+    input_hash: str
+
+    @property
+    def critical_factor(self):
+        return float(self.factors[0])
+
+    def __post_init__(self):
+        count = len(self.factors)
+        if count < 1:
+            raise ValueError("a buckling result requires at least one factor")
+        if self.modes.shape != (len(self.dof_labels), count):
+            raise ValueError("mode dimensions do not match the DOF labels")
+        if self.residuals.shape != (count,):
+            raise ValueError("residuals must match the factor count")
+        if not np.isfinite(self.factors).all() or not (self.factors > 0).all():
+            raise ValueError("buckling factors must be finite and positive")
+        if not np.all(np.diff(self.factors) >= 0):
+            raise ValueError("buckling factors must be ascending")
+        if not np.isfinite(self.modes).all() or not np.isfinite(self.residuals).all():
+            raise ValueError("buckling result values must be finite")
+        if not math.isfinite(self.preload_residual) or self.preload_residual < 0:
+            raise ValueError("the preload residual must be finite and non-negative")
+
+
+def _linalg():
+    try:
+        from scipy.linalg import eigh
+    except (ImportError, ModuleNotFoundError) as error:
+        raise ModelValidationError(
+            "/analysis", "backend_unavailable",
+            "buckling requires the ai-native-fem[sparse] extra") from error
+    return eigh
+
+
+def _solve_buckling(spec, modes, eigh):
+    mesh = spec.mesh
+    preload, geometric = _preload(spec)
+    stiffness = assemble_stiffness(spec)
+    free, _ = free_dofs(spec, mesh)
+    if not len(free):
+        raise ModelValidationError("/model/supports", "no_free_dofs",
+                                   "the model has no free degrees of freedom")
+    stiffness_block = stiffness[np.ix_(free, free)]
+    geometric_block = geometric[np.ix_(free, free)]
+    try:
+        values, vectors = eigh(-geometric_block, stiffness_block)
+    except np.linalg.LinAlgError as error:
+        raise BucklingError("buckling_mechanism",
+                            "the free stiffness is singular or not positive definite") from error
+    if not np.isfinite(values).all() or not np.isfinite(vectors).all():
+        raise BucklingError("buckling_not_converged", "the eigenpairs are not finite")
+    scale = float(np.max(np.abs(values))) if len(values) else 0.0
+    tolerance = 1e-12 * scale if scale > 0 else 0.0
+    candidates = sorted((1.0 / value, index) for index, value in enumerate(values)
+                        if value > tolerance)
+    if not candidates:
+        raise BucklingError("buckling_no_positive_factor",
+                            "the reference preload has no positive critical factor")
+    selected = candidates[:modes]
+    factors = np.array([factor for factor, _ in selected])
+    shapes = np.zeros((mesh.dof_count, len(selected)))
+    residuals = np.zeros(len(selected))
+    diagnostics = []
+    for column, (factor, index) in enumerate(selected):
+        phi = np.array(vectors[:, index], dtype=float)
+        peak = int(np.argmax(np.abs(phi)))
+        if phi[peak] < 0:
+            phi = -phi
+        shapes[free, column] = phi
+        gap = stiffness_block @ phi + factor * geometric_block @ phi
+        denominator = (float(np.linalg.norm(stiffness_block @ phi))
+                       + abs(factor) * float(np.linalg.norm(geometric_block @ phi)))
+        residual = float(np.linalg.norm(gap)) / denominator if denominator else 0.0
+        if not math.isfinite(residual) or residual > _MAX_EIGEN_RESIDUAL:
+            raise BucklingError("buckling_not_converged",
+                                f"mode {column} exceeds the eigenpair residual gate")
+        residuals[column] = residual
+        if column and abs(factors[column] - factors[column - 1]) <= 1e-8 * factors[column]:
+            diagnostics.append(f"repeated_factor:{column}")
+    return BucklingResult(
+        model=spec,
+        factors=factors,
+        modes=shapes,
+        residuals=residuals,
+        axial_forces=preload.axial_forces,
+        preload_residual=preload.relative_residual,
+        dof_labels=preload.dof_labels,
+        diagnostics=tuple(diagnostics),
+        versions=versions(),
+        input_hash=canonical_buckling_input_hash(spec),
+    )
+
+
+def solve_buckling(model, modes=None):
+    """Solve the linearized buckling problem for a schema 1.6 declaration."""
+    spec = validate_buckling_model(model)
+    if modes is None:
+        modes = spec.modes
+    if type(modes) is not int or not 1 <= modes <= 20:
+        raise ModelValidationError("/modes", "invalid_value",
+                                   "expected an integer from 1 to 20")
+    eigh = _linalg()
+    return _solve_buckling(spec, modes, eigh)
+
+
+__all__ = ["BucklingError", "BucklingResult", "PreloadResult",
+           "assemble_geometric", "solve_buckling", "solve_preload"]
