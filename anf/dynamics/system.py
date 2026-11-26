@@ -1,4 +1,7 @@
-"""Shared dense assembly and free-DOF helpers for planar dynamics."""
+"""Shared dense assembly, version and free-DOF helpers for planar dynamics."""
+
+from importlib.metadata import PackageNotFoundError, version
+import platform
 
 import numpy as np
 
@@ -46,3 +49,18 @@ def dof_labels(mesh):
     for key, dofs in zip(mesh.node_order, mesh.node_dofs):
         labels.extend((*key, component) for component in ("ux", "uy", "rz")[:len(dofs)])
     return tuple(labels)
+
+def versions():
+    """Return the package, interpreter and numerical library versions."""
+    try:
+        package = version("ai-native-fem")
+    except PackageNotFoundError:
+        package = "uninstalled"
+    try:
+        import scipy
+    except ImportError:  # pragma: no cover - the sparse backend imports it first
+        scipy_version = "uninstalled"
+    else:
+        scipy_version = scipy.__version__
+    return {"anf": package, "python": platform.python_version(),
+            "numpy": np.__version__, "scipy": scipy_version}

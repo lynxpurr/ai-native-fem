@@ -1,16 +1,14 @@
 """Dense generalized modal analysis for schema 1.4 planar structures."""
 
 from dataclasses import dataclass
-from importlib.metadata import PackageNotFoundError, version
 import math
-import platform
 
 import numpy as np
 
 from ..model import (ModelValidationError, _fields, canonical_modal_input_hash,
                      validate_modal_model)
 from .mass import assemble_mass
-from .system import assemble_stiffness, free_dofs
+from .system import assemble_stiffness, free_dofs, versions
 
 
 class ModalSolveError(ArithmeticError):
@@ -57,21 +55,6 @@ def _free_dofs(spec, mesh):
         return free_dofs(spec, mesh)
     except ModelValidationError as error:
         raise ModalSolveError(error.code, error.message) from error
-
-
-def _versions():
-    try:
-        package = version("ai-native-fem")
-    except PackageNotFoundError:
-        package = "uninstalled"
-    try:
-        import scipy
-    except ImportError:  # pragma: no cover - solve_modes imports SciPy first
-        scipy_version = "uninstalled"
-    else:
-        scipy_version = scipy.__version__
-    return {"anf": package, "python": platform.python_version(),
-            "numpy": np.__version__, "scipy": scipy_version}
 
 
 def solve_modes(model, count=None, options=None):
@@ -170,7 +153,7 @@ def solve_modes(model, count=None, options=None):
         rigid_mode_count=rigid_count,
         truncated=truncated,
         diagnostics=("modal_truncated",) if truncated else (),
-        versions=_versions(),
+        versions=versions(),
         input_hash=canonical_modal_input_hash(spec),
     )
 
