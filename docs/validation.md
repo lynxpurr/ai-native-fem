@@ -165,11 +165,13 @@ stays below `2.3e-14` and the eigenpair residual below `5.1e-11`. `K_g` is
 negative semidefinite under compression and positive semidefinite under tension,
 and tension-only or mechanism states are rejected without a factor.
 
-The installation matrix runs without SciPy first and then with the `sparse`
-extra on Linux Python 3.11/3.12 and Windows 3.12. At this revision the base
-installation runs 464 tests with 68 skipped (30 sparse tests, two modal modules,
-28 forced-response solver tests and eight buckling solver tests); installing the
-extra runs 546 tests.
+At commit `a6a3cc8`, CI installed the wheel and source distribution separately
+on Linux Python 3.11 and 3.12 and Windows Python 3.12. For each package, 464 tests
+passed and 68 were skipped before installing SciPy. After installing the
+`sparse` extra, each CI job ran 34 targeted tests per package, all of which
+passed. A separate local Windows Python 3.12 run with the `test`, `mcp` and
+`sparse` extras passed the full suite of 546 tests.
+[CI installation logs](https://github.com/lynxpurr/ai-native-fem/actions/runs/45847861313)
 
 Uniform-pressure rectangles, one-plane cantilever bending, planar truss/frame
 statics, cantilever parameter studies, the documented native mesh projections,
