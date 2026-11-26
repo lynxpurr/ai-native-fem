@@ -147,13 +147,24 @@ sets `truncated` without zero padding, and a nonzero modal support is rejected.
 Artifacts round-trip the model, labels, arrays and diagnostics; changed digests,
 extra files, non-finite arrays and unsupported schemas are rejected.
 
+For schema 1.5 forced dynamics, the SDOF complex response matches the analytic
+amplitude and phase to `1e-15`, the 16-element cantilever static limit matches
+`FL^3/(3EI)` to `1e-12`, and a 40-mode Euler–Bernoulli series agrees within
+`2e-5` up to twice the first frequency. Newmark step and free-vibration
+solutions match their closed forms with the halving ratio in `[3.5, 4.5]`;
+undamped energy drift stays below `1e-10`, damped energy never increases, the
+nonzero initial state matches its analytic decay, and summary peaks and energy
+are bitwise identical to recomputation from the stored arrays. Undamped exact
+resonance is rejected rather than reported as a finite amplitude.
+
 The installation matrix runs without SciPy first and then with the `sparse`
 extra on Linux Python 3.11/3.12 and Windows 3.12. At this revision the base
-installation runs 420 tests with 32 skipped (30 sparse tests and two modal
-modules); installing the extra runs 466 tests.
+installation runs 449 tests with 60 skipped (30 sparse tests, two modal modules
+and 28 forced-response solver tests); installing the extra runs 523 tests.
 
 Uniform-pressure rectangles, one-plane cantilever bending, planar truss/frame
-statics, cantilever parameter studies, the documented native mesh projections
-and schema 1.4 modal analysis are the tested application families. The tests do not certify
+statics, cantilever parameter studies, the documented native mesh projections,
+schema 1.4 modal analysis and schema 1.5 harmonic and transient forced dynamics
+are the tested application families. The tests do not certify
 arbitrary inputs or engineering use. Dense assembly also restricts model size;
 the sparse backend does not remove the declared limits.

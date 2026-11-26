@@ -1,10 +1,11 @@
 # AI-Native FEM (ANF)
 
-ANF is a Python research package for linear static finite element analysis of
+ANF is a Python research package for linear finite element analysis of
 Euler–Bernoulli cantilevers, rectangular Reissner–Mindlin plates, and planar
-trusses and frames, with consistent-mass modal analysis for the planar models.
-The `v0.1.0a6` research prerelease adds schema 1.4 modal analysis, mass-normalized
-modes, frequencies and versioned modal result artifacts.
+trusses and frames, with consistent-mass modal, harmonic and transient dynamics
+for the planar models. The `v0.1.0a6` research prerelease adds schema 1.4 modal
+analysis; schema 1.5 harmonic response and linear Newmark transients are
+available on `develop` and are not part of `v0.1.0a6`.
 [GitHub prerelease](https://github.com/lynxpurr/ai-native-fem/releases/tag/v0.1.0a6) ·
 [Release notes](docs/releases/0.1.0a6.md)
 
@@ -98,6 +99,33 @@ Requesting more modes than the free DOF count returns the available modes with
 `truncated` set. Modal artifacts store the model fingerprint, labels, arrays and
 diagnostics. [Modal guide](docs/modal.md)
 
+## Run a forced-dynamics analysis
+
+Schema 1.5 adds harmonic response and linear Newmark transients for the planar
+models. Install the `sparse` extra for SciPy.
+
+```python
+from pathlib import Path
+from anf.application import run_harmonic, run_transient
+
+harmonic = run_harmonic(
+    Path("examples/dynamics/harmonic-cantilever.json").read_bytes()
+)
+tip = harmonic.dof_labels.index(("input", "tip", "uy"))
+print(harmonic.frequencies_hz, harmonic.magnitudes[tip], harmonic.phases_deg[tip])
+
+transient = run_transient(
+    Path("examples/dynamics/transient-cantilever.json").read_bytes()
+)
+print(transient.times_s[-1], transient.global_peaks["displacement"])
+```
+
+The harmonic path solves `(K - w^2 M + i w C) U = F` per frequency with
+Rayleigh damping and reports complex displacement, magnitude and phase. The
+transient path integrates `M a + C v + K u = f` with the average-acceleration
+Newmark method on a uniform grid and stores the full `u`/`v`/`a` history, the
+energy series and summary peaks. [Forced-response guide](docs/forced-response.md)
+
 ## Mesh studies and local MCP
 
 - Run a mesh convergence study to compare explicit grids and save a replayable
@@ -137,6 +165,10 @@ writable directory for the local artifacts.
 - **Modal analysis.** Schema 1.4 planar `truss2d`/`frame2d` models with density,
   consistent mass, mass-normalized modes, frequencies and modal result
   artifacts. Requires the `sparse` extra; Python-only. [Modal guide](docs/modal.md)
+- **Forced dynamics.** Schema 1.5 planar models with Rayleigh damping, complex
+  harmonic loads, linear Newmark transient presets, versioned response
+  artifacts and bounded frequency/step budgets. Requires the `sparse` extra;
+  Python-only. [Forced-response guide](docs/forced-response.md)
 
 Use SI units. Dense assembly limits model size, and fine meshes can be
 poorly conditioned. The direct Python solvers raise `ArithmeticError` on

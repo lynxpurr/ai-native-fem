@@ -51,8 +51,9 @@ and research workflow:
 
 The CLI and MCP accept schema 1.0 and 1.1 single-solve declarations. Schema
 1.2/1.3 batch runs, parameter studies and native mesh import are Python
-interfaces. The package remains linear static: 3D frames, shear deformation,
-dynamics, buckling, nonlinear analysis, shells and solids are not included.
+interfaces. The package remains linear: 3D frames, shear deformation,
+buckling, nonlinear analysis, shells and solids are not included; harmonic and
+transient dynamics are Python-only (see below).
 
 ## Modal analysis in 0.1.0a6
 
@@ -69,6 +70,21 @@ consistent-mass modal analysis:
 
 Plate mass matrices, shear deformation, rotary inertia and a sparse modal path
 remain separate designs.
+
+## Forced dynamics in develop
+
+Schema 1.5 adds planar harmonic response and linear Newmark transients:
+
+- complex amplitude/phase harmonic loads, direct per-frequency factorization and
+  magnitude/phase results with conditioning diagnostics;
+- uniform transient grids, `constant`/`ramp`/`harmonic` presets, nonzero initial
+  state, complete `u`/`v`/`a` and energy histories with summary peaks;
+- versioned response artifacts and explicit frequency, step and DOF-time
+  budgets.
+
+Reaction recovery, response spectra, modal damping ratios, nonlinear Newmark,
+array or table force histories, variable time steps and a modal-superposition
+harmonic path remain separate designs.
 
 ## Plate research
 
