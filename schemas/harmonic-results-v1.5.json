@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lynxpurr/ai-native-fem/develop/schemas/harmonic-results-v1.5.json",
+  "title": "ANF harmonic result manifest 1.5",
+  "description": "Manifest for a schema 1.5 harmonic result directory. The numeric arrays are stored in arrays.npz; runtime validation also checks finite values, shapes, the input hash and the array digest.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "model",
+    "input_hash",
+    "frequency_count",
+    "diagnostics",
+    "versions",
+    "dof_labels",
+    "arrays",
+    "arrays_sha256"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.5"
+    },
+    "kind": {
+      "const": "harmonic_result"
+    },
+    "model": {
+      "type": "object",
+      "description": "The normalized schema 1.5 model declaration."
+    },
+    "input_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "frequency_count": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 200
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "versions": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "minProperties": 1
+    },
+    "dof_labels": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 4,
+        "items": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ]
+        }
+      }
+    },
+    "arrays": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "frequencies_hz",
+        "omega_rad_s",
+        "displacements",
+        "magnitudes",
+        "phases_deg",
+        "backward_errors",
+        "conditions"
+      ],
+      "properties": {
+        "frequencies_hz": {
+          "$ref": "#/$defs/array"
+        },
+        "omega_rad_s": {
+          "$ref": "#/$defs/array"
+        },
+        "displacements": {
+          "$ref": "#/$defs/array"
+        },
+        "magnitudes": {
+          "$ref": "#/$defs/array"
+        },
+        "phases_deg": {
+          "$ref": "#/$defs/array"
+        },
+        "backward_errors": {
+          "$ref": "#/$defs/array"
+        },
+        "conditions": {
+          "$ref": "#/$defs/array"
+        }
+      }
+    },
+    "arrays_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  },
+  "$defs": {
+    "array": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "shape",
+        "dtype"
+      ],
+      "properties": {
+        "shape": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "dtype": {
+          "enum": [
+            "float64",
+            "complex128"
+          ]
+        }
+      }
+    }
+  }
+}

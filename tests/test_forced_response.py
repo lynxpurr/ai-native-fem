@@ -1,11 +1,14 @@
 """Schema 1.5 forced-dynamics declaration checks."""
 
 import copy
+import math
 
 import numpy as np
 import pytest
 
-from anf.dynamics import assemble_mass
+from anf.dynamics import (HarmonicArtifactError, HarmonicResult, HarmonicSolveError,
+                          assemble_mass, harmonic_response, load_harmonic_result,
+                          save_harmonic_result)
 from anf.model import (Damping, ModelValidationError, canonical_dynamics_input_hash,
                        validate_dynamics_model)
 
@@ -254,3 +257,219 @@ def test_normalized_declaration_round_trips():
     assert again.to_dict() == spec.to_dict()
     assert canonical_dynamics_input_hash(again) == canonical_dynamics_input_hash(spec)
     assert again.dynamics.time.times_s == spec.dynamics.time.times_s
+
+# --- harmonic response (D5/D7/D8) -------------------------------------------------
+
+def _linalg():
+    return pytest.importorskip("scipy.linalg")
+
+
+def _sdof():
+    stiffness = E * A / L
+    mass = RHO * A * L / 3
+    return stiffness, mass, math.sqrt(stiffness / mass)
+
+
+def _cantilever_roots(count=40):
+    from scipy.optimize import brentq
+
+    roots = []
+    for order in range(1, count + 1):
+        guess = (2 * order - 1) * math.pi / 2
+        roots.append(brentq(lambda x: math.cos(x) * math.cosh(x) + 1,
+                            guess - 1.2, guess + 1.2))
+    return roots
+
+
+def _tip_mode(value):
+    """Stable evaluation of phi_n(L) for the cantilever shape functions."""
+    small = math.exp(-2 * value)
+    numerator = (1 + small) * math.sin(value) - (1 - small) * math.cos(value)
+    denominator = (1 - small) / 2 + math.sin(value) * math.exp(-value)
+    return numerator / denominator
+
+
+def _cantilever_series(frequencies, alpha, beta, count=40):
+    roots = _cantilever_roots(count)
+    omega = np.array([root**2 * math.sqrt(E * I / (RHO * A * L**4)) for root in roots])
+    tip = np.array([_tip_mode(root) for root in roots])
+    generalized_mass = RHO * A * L
+    response = []
+    for frequency in frequencies:
+        value = 2 * math.pi * frequency
+        zeta = alpha / (2 * omega) + beta * omega / 2
+        denominator = generalized_mass * (omega**2 - value**2
+                                          + 2j * zeta * omega * value)
+        response.append(np.sum(tip**2 / denominator))
+    return np.array(response)
+
+
+def test_harmonic_sdof_matches_analytic_amplitude_and_phase():
+    _linalg()
+    stiffness, mass, omega_n = _sdof()
+    zeta, force = 0.02, 1.0e4
+    alpha = 2 * zeta * omega_n
+    ratios = (0.0, 0.2, 0.5, 0.9, 1.0, 1.1, 1.5, 2.0)
+    frequencies = [ratio * omega_n / (2 * math.pi) for ratio in ratios]
+    result = harmonic_response(truss(
+        harmonic(frequencies_hz=frequencies,
+                 damping={"kind": "rayleigh", "alpha": alpha, "beta": 0.0}),
+        {"nodal": {"b": {"fx": force}}}))
+    row = result.dof_labels.index(("input", "b", "ux"))
+    omega = np.array([ratio * omega_n for ratio in ratios])
+    exact = force / (stiffness - mass * omega**2 + 1j * (alpha * mass) * omega)
+    assert np.allclose(result.displacements[row], exact, rtol=1e-12, atol=1e-18)
+    assert np.allclose(result.magnitudes[row], np.abs(exact), rtol=1e-12, atol=0.0)
+    assert np.allclose(result.phases_deg[row], np.degrees(np.angle(exact)),
+                       rtol=0.0, atol=1e-10)
+    assert np.all(result.backward_errors <= 1e-12)
+    assert np.allclose(result.omega_rad_s, 2 * math.pi * np.array(frequencies), rtol=1e-15)
+
+
+def test_harmonic_zero_frequency_is_the_static_limit():
+    _linalg()
+    result = harmonic_response(frame(harmonic(frequencies_hz=[0.0]),
+                                     {"nodal": {"tip": {"fy": 1.0}}}))
+    tip = result.dof_labels.index(("input", "tip", "uy"))
+    exact = L**3 / (3 * E * I)
+    assert abs(result.magnitudes[tip, 0] - exact) / exact <= 1e-9
+
+
+def test_harmonic_complex_load_phase_is_preserved():
+    _linalg()
+    stiffness, _, _ = _sdof()
+    result = harmonic_response(truss(
+        harmonic(frequencies_hz=[0.0], damping={"kind": "rayleigh"}),
+        {"nodal": {"b": {"fx": {"amplitude": 2.0, "phase_deg": 90.0}}}}))
+    row = result.dof_labels.index(("input", "b", "ux"))
+    assert result.magnitudes[row, 0] == pytest.approx(2.0 / stiffness)
+    assert result.phases_deg[row, 0] == pytest.approx(90.0)
+
+
+def test_harmonic_cantilever_matches_analytic_series():
+    _linalg()
+    alpha, beta = 1.720507, 4.743437e-5
+    first = 1.875104068711961**2 * math.sqrt(E * I / (RHO * A * L**4)) / (2 * math.pi)
+    ratios = (0.2, 0.5, 0.9, 0.99, 1.01, 1.5, 2.0)
+    frequencies = [ratio * first for ratio in ratios]
+    result = harmonic_response(frame(
+        harmonic(frequencies_hz=frequencies,
+                 damping={"kind": "rayleigh", "alpha": alpha, "beta": beta}),
+        {"nodal": {"tip": {"fy": 1.0}}}))
+    tip = result.dof_labels.index(("input", "tip", "uy"))
+    reference = _cantilever_series(frequencies, alpha, beta)
+    error = np.abs(result.displacements[tip] - reference) / np.abs(reference)
+    assert np.all(error <= 2e-5), error
+
+
+def test_harmonic_singular_frequency_is_rejected():
+    _linalg()
+    _, _, omega_n = _sdof()
+    with pytest.raises(HarmonicSolveError) as info:
+        harmonic_response(truss(
+            harmonic(frequencies_hz=[omega_n / (2 * math.pi)],
+                     damping={"kind": "rayleigh"}),
+            {"nodal": {"b": {"fx": 1.0}}}))
+    assert info.value.code == "harmonic_singular"
+    assert info.value.index == 0
+
+
+def test_harmonic_ill_conditioned_frequency_is_reported():
+    _linalg()
+    _, _, omega_n = _sdof()
+    result = harmonic_response(truss(
+        harmonic(frequencies_hz=[omega_n / (2 * math.pi)],
+                 damping={"kind": "rayleigh", "alpha": 2e-12 * omega_n, "beta": 0.0}),
+        {"nodal": {"b": {"fx": 1.0}}}))
+    assert result.diagnostics == ("harmonic_ill_conditioned:0",)
+    assert result.conditions[0] > 1e11
+
+
+def test_harmonic_load_on_fixed_dof_is_rejected():
+    _linalg()
+    with pytest.raises(ModelValidationError) as info:
+        harmonic_response(frame(harmonic(frequencies_hz=[1.0]),
+                                {"nodal": {"base": {"fy": 1.0}}}))
+    assert (info.value.code, info.value.path) == ("unsupported_load", "/loads/nodal/base/fy")
+
+
+def test_harmonic_requires_a_harmonic_declaration():
+    _linalg()
+    doc = frame({"type": "modal", "modes": 4})
+    doc["schema_version"] = "1.4"
+    with pytest.raises(ModelValidationError) as info:
+        harmonic_response(doc)
+    assert info.value.code == "unsupported_analysis"
+
+
+def test_harmonic_requires_free_dofs():
+    _linalg()
+    built = frame(harmonic(frequencies_hz=[1.0]), elements=1,
+                  supports={"base": {"ux": 0, "uy": 0, "rz": 0},
+                            "tip": {"ux": 0, "uy": 0, "rz": 0}})
+    with pytest.raises(ModelValidationError) as info:
+        harmonic_response(built)
+    assert info.value.code == "no_free_dofs"
+
+
+def test_harmonic_result_contract():
+    _linalg()
+    result = harmonic_response(frame(harmonic(frequencies_hz=[0.0, 20.0])))
+    assert isinstance(result, HarmonicResult)
+    assert result.displacements.shape == (51, 2)
+    assert result.magnitudes.shape == result.displacements.shape
+    assert result.phases_deg.shape == result.displacements.shape
+    assert len(result.dof_labels) == 51
+    fixed = [index for index, label in enumerate(result.dof_labels) if label[1] == "base"]
+    assert np.all(result.displacements[fixed] == 0)
+    assert np.allclose(result.omega_rad_s, 2 * math.pi * np.array([0.0, 20.0]),
+                       rtol=1e-15)
+    assert result.input_hash == canonical_dynamics_input_hash(result.model)
+
+
+def test_harmonic_artifact_round_trip(tmp_path):
+    _linalg()
+    result = harmonic_response(frame(harmonic(),
+                                     {"nodal": {"tip": {"fy": {"amplitude": 1000.0,
+                                                               "phase_deg": 30.0}}}}))
+    directory = save_harmonic_result(result, tmp_path, "harmonic")
+    restored = load_harmonic_result(directory)
+    assert np.array_equal(restored.displacements, result.displacements)
+    assert np.array_equal(restored.frequencies_hz, result.frequencies_hz)
+    assert np.array_equal(restored.conditions, result.conditions)
+    assert restored.diagnostics == result.diagnostics
+    assert restored.input_hash == result.input_hash
+    assert restored.dof_labels == result.dof_labels
+
+
+def test_harmonic_artifact_rejects_tampering(tmp_path):
+    _linalg()
+    result = harmonic_response(frame(harmonic(), {"nodal": {"tip": {"fy": 1.0}}}))
+    directory = save_harmonic_result(result, tmp_path, "harmonic")
+
+    arrays = directory / "arrays.npz"
+    arrays.write_bytes(arrays.read_bytes() + b"x")
+    with pytest.raises(HarmonicArtifactError):
+        load_harmonic_result(directory)
+
+    directory = save_harmonic_result(result, tmp_path, "second")
+    manifest = directory / "manifest.json"
+    manifest.write_text(manifest.read_text().replace(
+        result.input_hash, "0" * 64), encoding="utf-8")
+    with pytest.raises(HarmonicArtifactError):
+        load_harmonic_result(directory)
+
+    directory = save_harmonic_result(result, tmp_path, "third")
+    (directory / "extra.txt").write_text("x", encoding="utf-8")
+    with pytest.raises(HarmonicArtifactError):
+        load_harmonic_result(directory)
+
+
+def test_run_harmonic_application_entry():
+    _linalg()
+    from anf.application import run_harmonic
+
+    result = run_harmonic(frame(harmonic()), {"": None} if False else None)
+    assert isinstance(result, HarmonicResult)
+    with pytest.raises(ModelValidationError):
+        run_harmonic(frame(harmonic()), {"unknown": True})
