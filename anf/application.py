@@ -8,7 +8,7 @@ import numpy as np
 
 from .artifacts import LoadCaseResults, ResultBundle, _DTYPE, _case_result, _result_arrays
 from .beam import Beam, _solve_cantilever, solve_cantilever
-from .dynamics import harmonic_response, solve_modes
+from .dynamics import harmonic_response, solve_modes, transient_response
 from .loads import _case_hash, _request, _resolve_cases
 from .model import (ModelValidationError, _choice, _fields, _physical_inputs,
                     validate_load_case_model, validate_modal_model, validate_model)
@@ -60,6 +60,12 @@ def run_modal(model, options=None):
     """Solve the modal problem for a schema 1.4 declaration."""
     options = _fields({} if options is None else options, "/options", (), {"count": None})
     return solve_modes(validate_modal_model(model), count=options["count"])
+
+
+def run_transient(model, options=None):
+    """Integrate a schema 1.5 transient declaration with linear Newmark."""
+    _fields({} if options is None else options, "/options", ())
+    return transient_response(model)
 
 
 def run_harmonic(model, options=None):

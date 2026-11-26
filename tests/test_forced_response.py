@@ -7,8 +7,10 @@ import numpy as np
 import pytest
 
 from anf.dynamics import (HarmonicArtifactError, HarmonicResult, HarmonicSolveError,
+                          NewmarkSolveError, TransientArtifactError, TransientResult,
                           assemble_mass, harmonic_response, load_harmonic_result,
-                          save_harmonic_result)
+                          load_transient_result, save_harmonic_result,
+                          save_transient_result, transient_response)
 from anf.model import (Damping, ModelValidationError, canonical_dynamics_input_hash,
                        validate_dynamics_model)
 
@@ -473,3 +475,265 @@ def test_run_harmonic_application_entry():
     assert isinstance(result, HarmonicResult)
     with pytest.raises(ModelValidationError):
         run_harmonic(frame(harmonic()), {"unknown": True})
+
+
+# --- transient response (D6/D7/D8) ------------------------------------------------
+
+def _step_analytic(times, static, zeta, omega_n):
+    damped = omega_n * math.sqrt(1 - zeta**2)
+    return static * (1 - np.exp(-zeta * omega_n * times)
+                     * (np.cos(damped * times)
+                        + zeta / math.sqrt(1 - zeta**2) * np.sin(damped * times)))
+
+
+def _transient_declaration(start, end, steps, *, damping, initial=None, loads=None):
+    block = {"type": "transient", "time": {"start_s": start, "end_s": end, "steps": steps},
+             "damping": damping}
+    if initial is not None:
+        block["initial_state"] = initial
+    return truss(block, loads or {})
+
+
+def test_transient_sdof_step_converges_at_second_order():
+    _linalg()
+    stiffness, _, omega_n = _sdof()
+    zeta = 0.02
+    alpha = 2 * zeta * omega_n
+    period = 2 * math.pi / omega_n
+    load = {"nodal": {"b": {"fx": {"kind": "constant", "amplitude": 1.0e4}}}}
+    errors = {}
+    for per_period in (20, 40, 80):
+        result = transient_response(_transient_declaration(
+            0.0, 2 * period, 2 * per_period,
+            damping={"kind": "rayleigh", "alpha": alpha}, loads=load))
+        row = result.dof_labels.index(("input", "b", "ux"))
+        exact = _step_analytic(result.times_s, 1.0e4 / stiffness, zeta, omega_n)
+        errors[per_period] = (np.linalg.norm(result.displacement[:, row] - exact)
+                              / np.linalg.norm(exact))
+        assert result.worst_backward_error <= 1e-10
+    assert errors[40] <= 1.2e-2
+    assert errors[80] <= 3e-3
+    for coarse, fine in ((20, 40), (40, 80)):
+        assert 3.5 <= errors[coarse] / errors[fine] <= 4.5
+
+
+def test_transient_undamped_energy_is_conserved():
+    _linalg()
+    _, _, omega_n = _sdof()
+    steps = 5000
+    result = transient_response(_transient_declaration(
+        0.0, steps * 2 * math.pi / omega_n / 20, steps,
+        damping={"kind": "rayleigh"},
+        initial={"velocity": {"b": {"ux": 1.0}}}))
+    drift = np.max(np.abs(result.energy - result.energy[0])) / result.energy[0]
+    assert drift <= 1e-10
+    assert result.diagnostics == ("rayleigh_zero",)
+
+
+def test_transient_damped_energy_never_increases():
+    _linalg()
+    _, _, omega_n = _sdof()
+    zeta = 0.02
+    steps = 2000
+    result = transient_response(_transient_declaration(
+        0.0, steps * 2 * math.pi / omega_n / 20, steps,
+        damping={"kind": "rayleigh", "alpha": 2 * zeta * omega_n},
+        initial={"displacement": {"b": {"ux": 0.001}}}))
+    assert np.diff(result.energy).max() <= 1e-12 * result.energy[0]
+    assert result.energy[-1] < result.energy[0]
+
+
+def test_transient_nonzero_initial_state_matches_analytic():
+    _linalg()
+    _, _, omega_n = _sdof()
+    zeta = 0.02
+    period = 2 * math.pi / omega_n
+    result = transient_response(_transient_declaration(
+        0.0, 4 * period, 4 * 80,
+        damping={"kind": "rayleigh", "alpha": 2 * zeta * omega_n},
+        initial={"displacement": {"b": {"ux": 1e-3}}, "velocity": {"b": {"ux": 0.1}}}))
+    row = result.dof_labels.index(("input", "b", "ux"))
+    damped = omega_n * math.sqrt(1 - zeta**2)
+    exact = np.exp(-zeta * omega_n * result.times_s) * (
+        1e-3 * np.cos(damped * result.times_s)
+        + (0.1 + zeta * omega_n * 1e-3) / damped * np.sin(damped * result.times_s))
+    error = np.linalg.norm(result.displacement[:, row] - exact) / np.linalg.norm(exact)
+    assert error <= 2e-2
+    assert result.worst_backward_error <= 1e-10
+
+
+def test_transient_summary_matches_the_stored_history():
+    _linalg()
+    from anf.dynamics.system import assemble_stiffness
+
+    result = transient_response(frame(
+        transient(time={"start_s": 0.0, "end_s": 0.004, "steps": 100}),
+        {"nodal": {"tip": {"fy": {"kind": "constant", "amplitude": 1.0}}}}))
+    absolute = np.abs(result.displacement)
+    assert np.array_equal(result.peak_displacement, absolute.max(axis=0))
+    assert np.array_equal(result.peak_time_s, result.times_s[absolute.argmax(axis=0)])
+    stiffness = assemble_stiffness(result.model)
+    mass = assemble_mass(result.model).matrix
+    for index in range(len(result.times_s)):
+        expected = (0.5 * float(result.velocity[index] @ mass @ result.velocity[index])
+                    + 0.5 * float(result.displacement[index] @ stiffness
+                                  @ result.displacement[index]))
+        assert result.energy[index] == expected
+
+    def peak(values):
+        flat = int(np.abs(values).argmax())
+        row, column = np.unravel_index(flat, values.shape)
+        return (float(abs(values[row, column])), float(result.times_s[row]), int(column))
+
+    assert result.global_peaks["displacement"] == peak(result.displacement)
+    assert result.global_peaks["velocity"] == peak(result.velocity)
+    assert result.global_peaks["acceleration"] == peak(result.acceleration)
+
+
+def test_transient_result_contract():
+    _linalg()
+    result = transient_response(frame(
+        transient(time={"start_s": 0.0, "end_s": 0.004, "steps": 4}),
+        {"nodal": {"tip": {"fy": {"kind": "constant", "amplitude": 1.0}}}}))
+    assert isinstance(result, TransientResult)
+    assert result.displacement.shape == (5, 51)
+    assert result.velocity.shape == (5, 51)
+    assert result.acceleration.shape == (5, 51)
+    assert result.energy.shape == (5,)
+    assert result.peak_displacement.shape == (51,)
+    assert result.peak_time_s.shape == (51,)
+    fixed = [index for index, label in enumerate(result.dof_labels) if label[1] == "base"]
+    assert np.all(result.displacement[:, fixed] == 0)
+    assert result.dt_s == pytest.approx(0.001)
+    assert result.start_s == 0.0
+    assert result.diagnostics == ("rayleigh_zero",)
+
+
+def test_transient_ramp_is_zero_before_it_starts():
+    _linalg()
+    result = transient_response(_transient_declaration(
+        0.0, 0.004, 40, damping={"kind": "rayleigh"},
+        loads={"nodal": {"b": {"fx": {"kind": "ramp", "amplitude": 1e4,
+                                      "t0_s": 0.001, "t1_s": 0.002}}}}))
+    row = result.dof_labels.index(("input", "b", "ux"))
+    assert np.all(result.displacement[:11, row] == 0.0)
+    assert np.any(result.displacement[11:, row] != 0.0)
+
+
+def test_transient_harmonic_preset_reaches_the_harmonic_solution():
+    _linalg()
+    _, _, omega_n = _sdof()
+    zeta = 0.1
+    alpha = 2 * zeta * omega_n
+    frequency = 0.5 * omega_n / (2 * math.pi)
+    periods, per_period = 25, 160
+    period = 1 / frequency
+    result = transient_response(_transient_declaration(
+        0.0, periods * period, periods * per_period,
+        damping={"kind": "rayleigh", "alpha": alpha},
+        loads={"nodal": {"b": {"fx": {"kind": "harmonic", "amplitude": 1.0,
+                                      "frequency_hz": frequency, "phase_deg": 0.0}}}}))
+    steady = harmonic_response(truss(
+        harmonic(frequencies_hz=[frequency],
+                 damping={"kind": "rayleigh", "alpha": alpha}),
+        {"nodal": {"b": {"fx": 1.0}}}))
+    row = result.dof_labels.index(("input", "b", "ux"))
+    expected = abs(steady.displacements[row, 0])
+    window = result.times_s >= result.times_s[-1] - period
+    peak = np.abs(result.displacement[window, row]).max()
+    assert abs(peak - expected) / expected <= 1e-3
+
+
+def test_transient_requires_transient_declaration():
+    _linalg()
+    with pytest.raises(ModelValidationError) as info:
+        transient_response(frame(harmonic()))
+    assert info.value.code == "unsupported_analysis"
+
+
+def test_transient_fixed_dof_load_is_rejected():
+    _linalg()
+    with pytest.raises(ModelValidationError) as info:
+        transient_response(frame(transient(), {"nodal": {"base": {"fy": {
+            "kind": "constant", "amplitude": 1.0}}}}))
+    assert (info.value.code, info.value.path) == ("unsupported_load", "/loads/nodal/base/fy")
+
+
+def test_transient_requires_free_dofs():
+    _linalg()
+    built = frame(transient(), elements=1,
+                  supports={"base": {"ux": 0, "uy": 0, "rz": 0},
+                            "tip": {"ux": 0, "uy": 0, "rz": 0}})
+    with pytest.raises(ModelValidationError) as info:
+        transient_response(built)
+    assert info.value.code == "no_free_dofs"
+
+
+def test_transient_singular_factorization_is_reported(monkeypatch):
+    _linalg()
+    import scipy.linalg
+
+    def explode(*args, **kwargs):
+        raise np.linalg.LinAlgError("forced")
+
+    monkeypatch.setattr(scipy.linalg, "cho_factor", explode)
+    with pytest.raises(NewmarkSolveError) as info:
+        transient_response(frame(transient(), {"nodal": {"tip": {"fy": {
+            "kind": "constant", "amplitude": 1.0}}}}))
+    assert info.value.code == "newmark_singular"
+
+
+def test_transient_artifact_round_trip(tmp_path):
+    _linalg()
+    result = transient_response(frame(
+        transient(time={"start_s": 0.0, "end_s": 0.004, "steps": 20}),
+        {"nodal": {"tip": {"fy": {"kind": "ramp", "amplitude": 1.0,
+                                  "t0_s": 0.0, "t1_s": 0.002}}}}))
+    directory = save_transient_result(result, tmp_path, "transient")
+    restored = load_transient_result(directory)
+    assert np.array_equal(restored.displacement, result.displacement)
+    assert np.array_equal(restored.velocity, result.velocity)
+    assert np.array_equal(restored.acceleration, result.acceleration)
+    assert np.array_equal(restored.energy, result.energy)
+    assert np.array_equal(restored.peak_time_s, result.peak_time_s)
+    assert restored.global_peaks == result.global_peaks
+    assert restored.worst_backward_error == result.worst_backward_error
+    assert restored.diagnostics == result.diagnostics
+    assert restored.input_hash == result.input_hash
+    assert restored.dof_labels == result.dof_labels
+
+
+def test_transient_artifact_rejects_tampering(tmp_path):
+    _linalg()
+    result = transient_response(frame(
+        transient(time={"start_s": 0.0, "end_s": 0.002, "steps": 10}),
+        {"nodal": {"tip": {"fy": {"kind": "constant", "amplitude": 1.0}}}}))
+    directory = save_transient_result(result, tmp_path, "transient")
+    arrays = directory / "arrays.npz"
+    arrays.write_bytes(arrays.read_bytes() + b"x")
+    with pytest.raises(TransientArtifactError):
+        load_transient_result(directory)
+
+    directory = save_transient_result(result, tmp_path, "second")
+    manifest = directory / "manifest.json"
+    manifest.write_text(manifest.read_text().replace(
+        result.input_hash, "0" * 64), encoding="utf-8")
+    with pytest.raises(TransientArtifactError):
+        load_transient_result(directory)
+
+    directory = save_transient_result(result, tmp_path, "third")
+    (directory / "extra.txt").write_text("x", encoding="utf-8")
+    with pytest.raises(TransientArtifactError):
+        load_transient_result(directory)
+
+
+def test_run_transient_application_entry():
+    _linalg()
+    from anf.application import run_transient
+
+    result = run_transient(frame(
+        transient(time={"start_s": 0.0, "end_s": 0.002, "steps": 10}),
+        {"nodal": {"tip": {"fy": {"kind": "constant", "amplitude": 1.0}}}}))
+    assert isinstance(result, TransientResult)
+    with pytest.raises(ModelValidationError):
+        run_transient(frame(transient()), {"unknown": True})
