@@ -102,6 +102,7 @@
     "schemas/model-v1.json",
     "schemas/result-v1.1.json",
     "schemas/result-v1.json",
+    "schemas/transient-results-v1.5.json",
     "tests/test_classical.py",
     "tests/test_cli_v1.py",
     "tests/test_forced_response.py",
