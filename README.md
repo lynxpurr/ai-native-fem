@@ -128,10 +128,11 @@ energy series and summary peaks. [Forced-response guide](docs/forced-response.md
 
 ## Run a buckling analysis
 
-Schema 1.6 adds linearized elastic buckling. The declared nodal load is the
+Schema 1.6 elastic buckling is available on `develop`. To run this example,
+check out `develop` and run `python -m pip install ".[sparse]"` from the
+repository root. The declared nodal load is the
 reference preload; the solver returns the positive load factors and modes, so
-`critical_factor * reference load` is the critical physical load. Install the
-`sparse` extra for SciPy.
+`critical_factor * reference load` is the critical physical load.
 
 ```python
 from pathlib import Path
