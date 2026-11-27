@@ -12,7 +12,7 @@ yielding or contact. Install the prerelease wheel with the `sparse` extra to pro
 for the eigensolver.
 
 ```sh
-python -m pip install "./ai_native_fem-0.1.0a9-py3-none-any.whl[sparse]"
+python -m pip install "./ai_native_fem-0.1.0a10-py3-none-any.whl[sparse]"
 ```
 
 The analysis is a Python interface; the CLI and MCP do not expose it.

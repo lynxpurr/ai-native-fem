@@ -7,7 +7,7 @@ input normalization, load-scale-independent residuals, numeric range failures
 and rejection of non-finite or unbalanced solutions: 67 cases in total, passing
 in both Linux environments. CI builds distributions and
 runs tests against the installed wheel outside the checkout.
-This record covers the tested prototype and the additions through 0.1.0a9. It
+This record covers the tested prototype and the additions through 0.1.0a10. It
 does not certify another development version of ANF. See [methods](methods.md) for
 equations and restrictions.
 
@@ -175,6 +175,19 @@ The offline viewer is exercised with beam, plate, planar structure, and modal
 artifacts. Its checks cover saved values and units, model-derived DOF order,
 damaged artifacts, and distinct static and modal display semantics. The modal
 reader accepts empty selections and both byte orders for stored float64 arrays.
+
+The transient view is checked with a saved schema 1.5 history whose samples at
+0.5, 0.75 and 1 s reproduce the signed translation and rotation columns and
+the first sample at each absolute peak. An inconsistent time axis, DOF label
+order or saved peak is rejected before a report is written. The reader keeps
+the time grid saved by the solver, including a last sample that rounds away
+from the declared end time and repeated times at a large absolute offset.
+
+At integration commit `eeeebb9`, CI installed the wheel and source distribution
+separately on Linux Python 3.11 and 3.12 and Windows Python 3.12. For each
+package, the full suite reported 487 passed and 68 skipped before installing
+SciPy and 569 passed with the `sparse` extra.
+[CI installation logs](https://github.com/lynxpurr/ai-native-fem/actions/runs/46002027608)
 
 Uniform-pressure rectangles, one-plane cantilever bending, planar truss/frame
 statics, cantilever parameter studies, the documented native mesh projections,
