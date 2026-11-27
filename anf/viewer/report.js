@@ -184,7 +184,12 @@ function draw() {
             : normalized.map((point, i) =>
                 project(movePoint(point, displacement[i].map(value => value / extent), scale)));
     }
-    const all = [...original, ...deformed];
+    // Bound modal playback at both peaks so its viewport stays fixed through a cycle.
+    const all = modal && scale > 0 ? [
+        ...original,
+        ...modalFrame(normalized, modeMotion, scale, 0).map(project),
+        ...modalFrame(normalized, modeMotion, scale, Math.PI).map(project),
+    ] : [...original, ...deformed];
     const xs = all.map(point => point[0]);
     const ys = all.map(point => point[1]);
     const left = Math.min(...xs), right = Math.max(...xs);
