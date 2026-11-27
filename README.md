@@ -3,19 +3,19 @@
 ANF is a Python research package for linear finite element analysis of
 Euler–Bernoulli cantilevers, rectangular Reissner–Mindlin plates, and planar
 trusses and frames, with consistent-mass modal, harmonic and transient dynamics
-and linearized elastic buckling for the planar models. The `v0.1.0a8` research
-prerelease adds schema 1.6 elastic buckling with a declared nodal preload.
-[GitHub prerelease](https://github.com/lynxpurr/ai-native-fem/releases/tag/v0.1.0a8) ·
-[Release notes](docs/releases/0.1.0a8.md)
+and linearized elastic buckling for the planar models. The `v0.1.0a9` research
+prerelease adds an offline viewer for static results and saved planar mode shapes.
+[GitHub prerelease](https://github.com/lynxpurr/ai-native-fem/releases/tag/v0.1.0a9) ·
+[Release notes](docs/releases/0.1.0a9.md)
 
 ## Install
 
 Create and activate a virtual environment with Python 3.11 or newer.
-Download `ai_native_fem-0.1.0a8-py3-none-any.whl` from the prerelease and
+Download `ai_native_fem-0.1.0a9-py3-none-any.whl` from the prerelease and
 run this command from the directory containing the wheel.
 
 ```sh
-python -m pip install "./ai_native_fem-0.1.0a8-py3-none-any.whl"
+python -m pip install "./ai_native_fem-0.1.0a9-py3-none-any.whl"
 ```
 
 The base installation provides the Python API and the `anf` command. Pip
@@ -36,9 +36,9 @@ print(result.deflection[-1])  # approximately 0.0126984 m
 ### Command line
 
 Get the example inputs from the matching source distribution on the release
-page or the `v0.1.0a8` tag. Run these commands from the directory containing
+page or the `v0.1.0a9` tag. Run these commands from the directory containing
 `examples/`. Choose a fresh output directory each time you solve.
-[Tagged cantilever input](https://github.com/lynxpurr/ai-native-fem/blob/v0.1.0a8/examples/models/cantilever.json)
+[Tagged cantilever input](https://github.com/lynxpurr/ai-native-fem/blob/v0.1.0a9/examples/models/cantilever.json)
 
 ```sh
 anf validate examples/models/cantilever.json --json
@@ -49,7 +49,8 @@ anf inspect beam-result --json
 Expect `verification_passed` for the analytical comparison with the bundled
 cantilever reference. The result directory contains a JSON manifest with the
 input fingerprint and verification report, plus the numeric arrays in
-`arrays.npz`. [CLI guide](docs/cli.md) · [Model and result format](docs/model-format.md)
+`arrays.npz`. [CLI guide](docs/cli.md) · [Model and result format](docs/model-format.md) ·
+[Offline result viewer](docs/viewer.md)
 
 ## Solve a planar frame
 
@@ -127,7 +128,7 @@ energy series and summary peaks. [Forced-response guide](docs/forced-response.md
 
 ## Run a buckling analysis
 
-Install the a8 wheel with the `sparse` extra to run schema 1.6 elastic buckling.
+Install the prerelease wheel with the `sparse` extra to run schema 1.6 elastic buckling.
 Use the examples from the matching source distribution or tag. The declared
 nodal load is the
 reference preload; the solver returns the positive load factors and modes, so
@@ -164,7 +165,7 @@ path. [Buckling guide](docs/buckling.md)
 Install the wheel with the `mcp` extra to enable the server.
 
 ```sh
-python -m pip install "./ai_native_fem-0.1.0a8-py3-none-any.whl[mcp]"
+python -m pip install "./ai_native_fem-0.1.0a9-py3-none-any.whl[mcp]"
 ```
 
 Configure your client to launch `anf-mcp --workspace PATH`. Use an existing

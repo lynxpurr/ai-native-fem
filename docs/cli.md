@@ -8,6 +8,7 @@ Each solve creates a new result directory.
 anf validate examples/models/cantilever.json --json
 anf solve examples/models/cantilever.json --reference cantilever.closed-form.v1 --output beam-result --json
 anf inspect beam-result --json
+anf view beam-result --output beam-view.html
 anf solve examples/models/thick-q4.json --reference plate.navier-31.v1 --output thick-result --json
 anf solve examples/models/thin-q4.json --reference plate.thin-q4-navier-31.v1 --output thin-result --json
 anf solve examples/structures/portal.json --output portal-result --json
@@ -19,6 +20,8 @@ anf validate examples/models/invalid-units.json --json
 Its parent directory must already exist. `inspect` reads an existing result
 and returns the report, diagnostics and array metadata. Use the
 [Python artifact reader](model-format.md) to access the numeric arrays.
+`view` exports an [offline HTML viewer](viewer.md) for static artifacts and
+saved schema 1.4 modal artifacts.
 
 `validate`, `solve` and `inspect` accept schema 1.0 beam/plate declarations
 and schema 1.1 planar structure declarations. Named load cases,
@@ -32,7 +35,7 @@ completes the solve and records `verification_failed` in its report.
 
 | Exit code | Outcome |
 | --- | --- |
-| 0 | Validation, solve or inspection completed. Check `verification_status` for accuracy evidence. |
+| 0 | Validation, solve, inspection or viewer export completed. Check `verification_status` for accuracy evidence. |
 | 2 | Invalid command, unreadable or invalid model, or unsupported model or reference. |
 | 3 | Numerical failure. The output directory contains a manifest with the diagnostic. |
 | 4 | Output or inspection failed. This includes existing output and invalid artifacts. |
