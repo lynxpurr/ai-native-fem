@@ -27,5 +27,8 @@ Repository = "https://github.com/lynxpurr/ai-native-fem"
 [tool.setuptools.packages.find]
 include = ["anf", "anf.*"]
 
+[tool.setuptools.package-data]
+"anf.viewer" = ["report.html", "report.js"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

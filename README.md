@@ -50,7 +50,8 @@ anf inspect beam-result --json
 Expect `verification_passed` for the analytical comparison with the bundled
 cantilever reference. The result directory contains a JSON manifest with the
 input fingerprint and verification report, plus the numeric arrays in
-`arrays.npz`. [CLI guide](docs/cli.md) · [Model and result format](docs/model-format.md)
+`arrays.npz`. [CLI guide](docs/cli.md) · [Model and result format](docs/model-format.md) ·
+[Offline result viewer](docs/viewer.md)
 
 ## Solve a planar frame
 
