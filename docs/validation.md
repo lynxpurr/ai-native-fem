@@ -7,7 +7,7 @@ input normalization, load-scale-independent residuals, numeric range failures
 and rejection of non-finite or unbalanced solutions: 67 cases in total, passing
 in both Linux environments. CI builds distributions and
 runs tests against the installed wheel outside the checkout.
-This record covers the tested prototype and the 0.1.0a5, 0.1.0a6 and 0.1.0a7 additions; it
+This record covers the tested prototype and the additions through 0.1.0a8. It
 does not certify another development version of ANF. See [methods](methods.md) for
 equations and restrictions.
 
@@ -165,13 +165,11 @@ stays below `2.3e-14` and the eigenpair residual below `5.1e-11`. `K_g` is
 negative semidefinite under compression and positive semidefinite under tension,
 and tension-only or mechanism states are rejected without a factor.
 
-At commit `a6a3cc8`, CI installed the wheel and source distribution separately
-on Linux Python 3.11 and 3.12 and Windows Python 3.12. For each package, 464 tests
-passed and 68 were skipped before installing SciPy. After installing the
-`sparse` extra, each CI job ran 34 targeted tests per package, all of which
-passed. A separate local Windows Python 3.12 run with the `test`, `mcp` and
-`sparse` extras passed the full suite of 546 tests.
-[CI installation logs](https://github.com/lynxpurr/ai-native-fem/actions/runs/45847861313)
+At integration commit `27718fc`, CI installed the wheel and source distribution
+separately on Linux Python 3.11 and 3.12 and Windows Python 3.12. For each
+package, the full suite reported 464 passed and 68 skipped before installing
+SciPy and 546 passed with the `sparse` extra.
+[CI installation logs](https://github.com/lynxpurr/ai-native-fem/actions/runs/45922487091)
 
 Uniform-pressure rectangles, one-plane cantilever bending, planar truss/frame
 statics, cantilever parameter studies, the documented native mesh projections,

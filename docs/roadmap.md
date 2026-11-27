@@ -87,7 +87,7 @@ Reaction recovery, response spectra, modal damping ratios, nonlinear Newmark,
 array or table force histories, variable time steps and a modal-superposition
 harmonic path remain separate designs.
 
-## Elastic buckling in develop
+## Elastic buckling in 0.1.0a8
 
 Schema 1.6 adds linearized elastic bifurcation for planar trusses and frames:
 
