@@ -1,14 +1,19 @@
 """Static result viewer acceptance through a saved artifact and the CLI."""
 
+from dataclasses import replace
+from hashlib import sha256
 import json
 from pathlib import Path
 import subprocess
 import sys
 
+import numpy as np
 import pytest
 
 from anf.application import run_analysis
 from anf.artifacts import save_result
+from anf.dynamics import ModalResult, load_modal_result, save_modal_result
+from anf.model import canonical_modal_input_hash, validate_modal_model
 from anf.viewer import open_result_artifact
 
 
@@ -152,3 +157,124 @@ def test_view_requires_new_html_output(tmp_path):
         assert status == 4
         assert summary["error"]["path"] == "/output"
     assert output.read_bytes() == b"keep existing data"
+
+
+@pytest.fixture
+def modal_artifact(tmp_path):
+    data = json.loads((EXAMPLES / "structures/modal-cantilever.json").read_bytes())
+    data["model"]["members"]["beam"]["elements"] = 1
+    model = validate_modal_model(data)
+    result = ModalResult(
+        model=model,
+        eigenvalues=np.array([1.0, 4.0]),
+        omega_rad_s=np.array([1.0, 2.0]),
+        frequencies_hz=np.array([1.0, 2.0]) / (2 * np.pi),
+        modes=np.asfortranarray([[3.0, 0.0], [4.0, 0.0], [0.0, 1.0]]),
+        dof_labels=(("input", "b", "ux"), ("input", "b", "uy"), ("input", "b", "rz")),
+        residuals=np.array([1e-12, 2e-12]),
+        rigid_mode_count=0,
+        truncated=True,
+        diagnostics=("modal_truncated",),
+        versions={"anf": "0.1.0a6"},
+        input_hash=canonical_modal_input_hash(model),
+    )
+    return result, save_modal_result(result, tmp_path, "modal")
+
+
+def test_modal_view_preserves_saved_coefficients_and_normalizes_translation(tmp_path, modal_artifact):
+    result, directory = modal_artifact
+    output = tmp_path / "mode.html"
+    status, summary = cli(tmp_path, "view", directory, "--output", output)
+    assert status == 0
+    assert summary["diagnostics"] == ["modal_truncated"]
+    assert summary["frequencies_hz"] == result.frequencies_hz.tolist()
+    assert summary["residuals"] == result.residuals.tolist()
+    scene = scene_from(output)
+    assert scene["frequencies_hz"] == summary["frequencies_hz"]
+    assert scene["labels"] == ["a", "b"]
+    assert scene["modes"][0]["motion"] == [[0, 0, 0], [0.6, 0.8, 0]]
+    assert scene["modes"][1]["motion"] == [[0, 0, 0], [0, 0, 0]]
+    assert scene["modes"][0]["fields"][0]["values"] == [3.0]
+    assert scene["modes"][0]["fields"][0]["nodes"] == [1]
+    assert scene["modes"][1]["fields"][2]["values"] == [1.0]
+    assert cli(tmp_path, "inspect", directory)[0] == 4
+
+
+@pytest.mark.parametrize("damage", ["label_order", "model_shape", "archive_shape"])
+def test_modal_view_rejects_inconsistent_label_order_or_shapes(tmp_path, modal_artifact, damage):
+    _, directory = modal_artifact
+    manifest = directory / "manifest.json"
+    arrays = directory / "arrays.npz"
+    data = json.loads(manifest.read_bytes())
+    if damage == "label_order":
+        data["dof_labels"].reverse()
+    elif damage == "model_shape":
+        data["arrays"]["modes"]["shape"] = [2, 3]
+    else:
+        with np.load(arrays, allow_pickle=False) as reader:
+            payload = dict(reader)
+        payload["modes"] = np.zeros((3, 3))
+        np.savez_compressed(arrays, **payload)
+        data["arrays_sha256"] = sha256(arrays.read_bytes()).hexdigest()
+    manifest.write_text(json.dumps(data), encoding="utf-8")
+    output = tmp_path / "mode.html"
+    status, summary = cli(tmp_path, "view", directory, "--output", output)
+    assert status == 4
+    assert summary["error"]["path"] == "/artifact"
+    assert not output.exists()
+
+
+
+def test_modal_view_handles_a_saved_empty_selection(tmp_path, modal_artifact):
+    result, _ = modal_artifact
+    empty = replace(
+        result, eigenvalues=result.eigenvalues[:0], omega_rad_s=result.omega_rad_s[:0],
+        frequencies_hz=result.frequencies_hz[:0], residuals=result.residuals[:0],
+        modes=result.modes[:, :0],
+    )
+    directory = save_modal_result(empty, tmp_path, "empty")
+    restored = load_modal_result(directory)
+    assert restored.dof_labels == empty.dof_labels
+    assert restored.modes.shape == (len(empty.dof_labels), 0)
+    output = tmp_path / "empty.html"
+    status, summary = cli(tmp_path, "view", directory, "--output", output)
+    assert status == 0
+    assert summary["frequencies_hz"] == summary["residuals"] == []
+    assert scene_from(output)["modes"] == []
+
+
+def test_modal_reader_accepts_saved_big_endian_float64(tmp_path, modal_artifact):
+    result, directory = modal_artifact
+    archive = directory / "arrays.npz"
+    manifest = directory / "manifest.json"
+    with np.load(archive, allow_pickle=False) as arrays:
+        big_endian = {name: arrays[name].astype(">f8") for name in arrays.files}
+    np.savez_compressed(archive, **big_endian)
+    metadata = json.loads(manifest.read_bytes())
+    metadata["arrays_sha256"] = sha256(archive.read_bytes()).hexdigest()
+    manifest.write_text(json.dumps(metadata), encoding="utf-8")
+    restored = load_modal_result(directory)
+    for name in big_endian:
+        actual = getattr(restored, name)
+        assert actual.dtype == np.dtype(float)
+        np.testing.assert_array_equal(actual, getattr(result, name))
+    output = tmp_path / "big-endian.html"
+    assert cli(tmp_path, "view", directory, "--output", output)[0] == 0
+    assert scene_from(output)["frequencies_hz"] == result.frequencies_hz.tolist()
+
+
+def test_static_reader_requires_little_endian_arrays(tmp_path):
+    directory = artifact(tmp_path, "models/cantilever.json")
+    archive = directory / "arrays.npz"
+    manifest = directory / "manifest.json"
+    with np.load(archive, allow_pickle=False) as arrays:
+        big_endian = {name: arrays[name].astype(">f8") for name in arrays.files}
+    np.savez_compressed(archive, **big_endian)
+    metadata = json.loads(manifest.read_bytes())
+    metadata["arrays_sha256"] = sha256(archive.read_bytes()).hexdigest()
+    manifest.write_text(json.dumps(metadata), encoding="utf-8")
+    path = tmp_path / "static.html"
+    status, summary = cli(tmp_path, "view", directory, "--output", path)
+    assert status == 4
+    assert "dtype" in summary["error"]["message"]
+    assert not path.exists()

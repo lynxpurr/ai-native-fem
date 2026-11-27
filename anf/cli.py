@@ -7,8 +7,9 @@ import sys
 
 from .application import run_analysis
 from .artifacts import ArtifactError, load_result, save_result
+from .dynamics import ModalResult
 from .model import ModelValidationError, _JSON_LIMIT, canonical_input_hash, validate_model
-from .viewer import ViewerOutputError, export_result_view, open_result_artifact
+from .viewer import ViewerOutputError, export_result_view, modal_summary, open_result_artifact
 
 
 class _UsageError(ValueError):
@@ -77,7 +78,11 @@ def _dispatch(args):
     if args.command == "view":
         result = open_result_artifact(args.artifact)
         path = export_result_view(result, args.output)
-        return {**_summary(result, args.artifact), "output": str(path.absolute())}, 0
+        if isinstance(result, ModalResult):
+            summary = {**modal_summary(result), "artifact": str(args.artifact.absolute())}
+        else:
+            summary = _summary(result, args.artifact)
+        return {**summary, "output": str(path.absolute())}, 0
     model = _read_model(args.model)
     if args.command == "validate":
         return {"input_status": "valid", "input_hash": canonical_input_hash(model),

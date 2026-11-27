@@ -20,9 +20,10 @@ anf validate examples/models/invalid-units.json --json
 Its parent directory must already exist. `inspect` reads an existing result
 and returns the report, diagnostics and array metadata. Use the
 [Python artifact reader](model-format.md) to access the numeric arrays.
-`view` uses the same reader and exports an [offline HTML viewer](viewer.md).
+`view` exports an [offline HTML viewer](viewer.md) for static artifacts and
+saved schema 1.4 modal artifacts.
 
-`validate`, `solve`, `inspect` and `view` accept schema 1.0 beam/plate declarations
+`validate`, `solve` and `inspect` accept schema 1.0 beam/plate declarations
 and schema 1.1 planar structure declarations. Named load cases,
 combinations, end releases and rotational springs use schema 1.2/1.3 through
 the [Python batch entry point](load-cases.md); the CLI rejects those schemas
