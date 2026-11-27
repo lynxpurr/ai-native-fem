@@ -3,12 +3,18 @@
 from hashlib import sha256
 from io import BytesIO
 import json
+import math
 from pathlib import Path
+import struct
+from zipfile import BadZipFile
+import zlib
 
 import numpy as np
 
-from ..model import canonical_dynamics_input_hash, validate_dynamics_model
+from ..artifacts import _HEADER_LIMIT, _read_arrays, _read_regular, _require_directory
+from ..model import _STATE_LIMIT, canonical_dynamics_input_hash, validate_dynamics_model
 from .response import HarmonicResult, TransientResult
+from .system import dof_labels
 
 _JSON_LIMIT = 1024 * 1024
 _ARRAY_LIMIT = 64 * 1024 * 1024
@@ -267,8 +273,9 @@ def save_transient_result(result, root, name):
         raise TransientArtifactError(f"could not save transient result: {error}") from error
 
 
-def _transient_manifest(directory):
-    data = _regular(directory / _MANIFEST, _JSON_LIMIT)
+def _transient_manifest(directory, *, for_view):
+    read = _read_regular if for_view else _regular
+    data = read(directory / _MANIFEST, _JSON_LIMIT)
     try:
         manifest = json.loads(data.decode("utf-8"), parse_constant=lambda value: (_ for _ in ()).throw(
             ValueError(f"non-finite constant {value}")))
@@ -322,6 +329,61 @@ def _transient_arrays(directory, manifest, labels):
     return arrays
 
 
+def _transient_view_arrays(directory, manifest, model, labels):
+    grid = model.dynamics.time
+    points = grid.steps + 1
+    if (type(manifest["point_count"]) is not int or type(manifest["steps"]) is not int
+            or manifest["point_count"] != points or manifest["steps"] != grid.steps):
+        raise TransientArtifactError("time-point count does not match the model")
+    if labels != dof_labels(model.mesh):
+        raise TransientArtifactError("DOF label order does not match the model")
+
+    shapes = {
+        "times_s": (points,), "energy": (points,),
+        "displacement": (points, len(labels)), "velocity": (points, len(labels)),
+        "acceleration": (points, len(labels)),
+        "peak_displacement": (len(labels),), "peak_time_s": (len(labels),),
+    }
+    expected = {name: {"shape": list(shape), "dtype": "float64"} for name, shape in shapes.items()}
+    if manifest["arrays"] != expected:
+        raise TransientArtifactError("transient array metadata does not match the model")
+    data = _read_regular(directory / _ARRAYS, _ARRAY_LIMIT)
+    if sha256(data).hexdigest() != manifest["arrays_sha256"]:
+        raise TransientArtifactError("array digest does not match the manifest")
+    layout = {name: (shape, "", "") for name, shape in shapes.items()}
+    budget = sum(8 * math.prod(shape) + 10 + _HEADER_LIMIT for shape in shapes.values())
+    arrays, _ = _read_arrays(data, layout, budget, allow_fortran=True, allow_big_endian=True,
+                             element_limit=_STATE_LIMIT)
+    return arrays
+
+
+def _validate_transient_view(result):
+    grid = result.model.dynamics.time
+    times = result.times_s
+    # The scalar solver saves its evaluated grid, which can round the last
+    # sample away from end_s or repeat a time at a large absolute offset.
+    scalar_grid = result.dt_s == grid.dt_s and np.array_equal(times, grid.times_s)
+    if result.start_s != grid.start_s or times[0] != grid.start_s:
+        raise TransientArtifactError("saved time axis is inconsistent with the declared grid")
+    if not scalar_grid:
+        # Explicit grids retain their samples but serialize as start/end/steps.
+        intervals = np.diff(times)
+        ulp = max(math.ulp(grid.start_s), math.ulp(grid.end_s))
+        tolerance = 1e-9 * result.dt_s + 2 * ulp
+        if (times[-1] != grid.end_s or np.any(intervals <= 0)
+                or np.any(np.abs(intervals - result.dt_s) > tolerance)
+                or abs(result.dt_s - grid.dt_s) > tolerance):
+            raise TransientArtifactError("saved time axis is inconsistent with the declared grid")
+    absolute = np.abs(result.displacement)
+    indices = absolute.argmax(axis=0)
+    if (not np.array_equal(result.peak_displacement, absolute[indices, np.arange(len(indices))])
+            or not np.array_equal(result.peak_time_s, times[indices])):
+        raise TransientArtifactError("saved displacement peaks do not match the history")
+    if (not math.isfinite(result.worst_backward_error) or result.worst_backward_error < 0
+            or not 0 <= result.worst_backward_step < len(times)):
+        raise TransientArtifactError("invalid backward-error record")
+
+
 def _transient_peaks(value):
     if not isinstance(value, dict) or set(value) != {"displacement", "velocity", "acceleration"}:
         raise TransientArtifactError("invalid global peaks")
@@ -340,13 +402,19 @@ def _transient_peaks(value):
 
 def load_transient_result(directory):
     """Load and validate a complete transient artifact."""
+    return _load_transient_result(directory, for_view=False)
+
+
+def _load_transient_result(directory, *, for_view):
     directory = Path(directory)
     try:
+        if for_view:
+            _require_directory(directory)
         if not directory.is_dir():
             raise TransientArtifactError("expected an artifact directory")
-        if {entry.name for entry in directory.iterdir()} != {_MANIFEST, _ARRAYS}:
+        if any(entry.name not in {_MANIFEST, _ARRAYS} for entry in directory.iterdir()):
             raise TransientArtifactError("unexpected transient artifact entries")
-        manifest = _transient_manifest(directory)
+        manifest = _transient_manifest(directory, for_view=for_view)
         model = validate_dynamics_model(manifest["model"])
         if model.analysis_type != "transient":
             raise TransientArtifactError("artifact model is not a transient declaration")
@@ -359,7 +427,9 @@ def load_transient_result(directory):
                 and all(isinstance(item, (str, int)) and not isinstance(item, bool)
                         for item in label[1:]) for label in labels)):
             raise TransientArtifactError("invalid DOF labels")
-        arrays = _transient_arrays(directory, manifest, labels)
+        labels = tuple(tuple(label) for label in labels)
+        arrays = (_transient_view_arrays(directory, manifest, model, labels) if for_view
+                  else _transient_arrays(directory, manifest, labels))
         versions = manifest["versions"]
         if (not isinstance(versions, dict) or not versions
                 or not all(isinstance(key, str) and isinstance(value, str)
@@ -381,14 +451,14 @@ def load_transient_result(directory):
                 raise TransientArtifactError("invalid backward-error record")
         if not isinstance(manifest["worst_backward_step"], int):
             raise TransientArtifactError("invalid backward-error step")
-        return TransientResult(
+        result = TransientResult(
             model=model,
             times_s=arrays["times_s"],
             displacement=arrays["displacement"],
             velocity=arrays["velocity"],
             acceleration=arrays["acceleration"],
             energy=arrays["energy"],
-            dof_labels=tuple(tuple(label) for label in labels),
+            dof_labels=labels,
             start_s=float(manifest["start_s"]),
             dt_s=float(manifest["dt_s"]),
             peak_displacement=arrays["peak_displacement"],
@@ -400,7 +470,11 @@ def load_transient_result(directory):
             versions=dict(versions),
             input_hash=manifest["input_hash"],
         )
+        if for_view:
+            _validate_transient_view(result)
+        return result
     except TransientArtifactError:
         raise
-    except (OSError, ValueError, TypeError, KeyError) as error:
+    except (OSError, ValueError, TypeError, KeyError, RuntimeError, EOFError, SyntaxError,
+            BadZipFile, struct.error, zlib.error) as error:
         raise TransientArtifactError(f"invalid transient result artifact: {error}") from error

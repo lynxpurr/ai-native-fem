@@ -43,7 +43,9 @@
     "anf/verification.py",
     "anf/viewer/__init__.py",
     "anf/viewer/report.html",
-    "anf/viewer/report.js"
+    "anf/viewer/report.js",
+    "anf/viewer/transient.html",
+    "anf/viewer/transient.js"
   ],
   "licenses": [
     "LICENSE",
@@ -136,6 +138,7 @@
     "tests/test_robustness.py",
     "tests/test_sparse_parity.py",
     "tests/test_studies_reports.py",
+    "tests/test_transient_view.py",
     "tests/test_verification.py",
     "tests/test_viewer_contract.py"
   ]
