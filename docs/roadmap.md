@@ -109,6 +109,14 @@ artifacts and schema 1.4 modal artifacts. The static report shows the original
 and deformed meshes, fields, loads, and supports. The modal report adds mode
 selection, frequencies, relative residuals, and illustrative playback.
 
+## Transient displacement history in 0.1.0a10
+
+`anf view` also exports a standalone HTML report for saved schema 1.5 transient
+artifacts. The report shows the saved translation or rotation of one degree of
+freedom against absolute time and marks the first sample at the absolute peak.
+Batch results, frequency response and buckling still require separate artifact
+views.
+
 ## Plate research
 
 The rectangular MITC4 implementation covers hard simply supported edges under

@@ -7,9 +7,10 @@ import sys
 
 from .application import run_analysis
 from .artifacts import ArtifactError, load_result, save_result
-from .dynamics import ModalResult
+from .dynamics import ModalResult, TransientResult
 from .model import ModelValidationError, _JSON_LIMIT, canonical_input_hash, validate_model
-from .viewer import ViewerOutputError, export_result_view, modal_summary, open_result_artifact
+from .viewer import (ViewerOutputError, export_result_view, modal_summary, open_result_artifact,
+                     transient_summary)
 
 
 class _UsageError(ValueError):
@@ -79,9 +80,12 @@ def _dispatch(args):
         result = open_result_artifact(args.artifact)
         path = export_result_view(result, args.output)
         if isinstance(result, ModalResult):
-            summary = {**modal_summary(result), "artifact": str(args.artifact.absolute())}
+            summary = modal_summary(result)
+        elif isinstance(result, TransientResult):
+            summary = transient_summary(result)
         else:
             summary = _summary(result, args.artifact)
+        summary["artifact"] = str(args.artifact.absolute())
         return {**summary, "output": str(path.absolute())}, 0
     model = _read_model(args.model)
     if args.command == "validate":

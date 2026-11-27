@@ -8,8 +8,12 @@ from pathlib import Path
 import numpy as np
 
 from ..artifacts import ArtifactError, _read_regular, _require_directory, load_result
-from ..dynamics import ModalResult, load_modal_result
+from ..dynamics import ModalResult, TransientResult, load_modal_result
+from ..dynamics.response_artifacts import _load_transient_result
 from ..model import _JSON_LIMIT
+
+
+_TRANSIENT_VIEW_LIMIT = 32 * 1024 * 1024
 
 
 class ViewerOutputError(ValueError):
@@ -27,13 +31,17 @@ class FieldDescriptor:
 
 
 def open_result_artifact(directory):
-    """Read a static or modal artifact using its versioned result reader."""
+    """Read a static, modal or transient artifact using its versioned result reader."""
     directory = Path(directory)
     try:
         _require_directory(directory)
         manifest = json.loads(_read_regular(directory / "manifest.json", _JSON_LIMIT))
-        if isinstance(manifest, dict) and manifest.get("schema_version") == "1.4":
-            return load_modal_result(directory)
+        if isinstance(manifest, dict):
+            if manifest.get("schema_version") == "1.4":
+                return load_modal_result(directory)
+            if (manifest.get("schema_version") == "1.5"
+                    and manifest.get("kind") == "transient_result"):
+                return _load_transient_result(directory, for_view=True)
     except (OSError, ValueError, RecursionError) as error:
         if isinstance(error, ArtifactError):
             raise
@@ -218,18 +226,63 @@ def _modal_scene(result):
     return {**geometry, **modal_summary(result), "problem": model.problem_type, "modes": modes}
 
 
+def transient_summary(result):
+    """Return the time-grid and diagnostic measurements shown in the report."""
+    return {
+        "schema_version": "1.5",
+        "kind": "transient_result",
+        "input_hash": result.input_hash,
+        "point_count": len(result.times_s),
+        "start_s": result.start_s,
+        "end_s": float(result.times_s[-1]),
+        "dt_s": result.dt_s,
+        "worst_backward_error": result.worst_backward_error,
+        "worst_backward_step": result.worst_backward_step,
+        "diagnostics": list(result.diagnostics),
+        "versions": dict(result.versions),
+    }
+
+
+def _transient_scene(result):
+    nodes = {}
+    for column, (*parts, component) in enumerate(result.dof_labels):
+        key = tuple(parts)
+        label = key[1] if key[0] == "input" else f"{key[1]} / subdivision {key[2]}"
+        entries = nodes.setdefault(key, {"label": label, "components": []})
+        entries["components"].append({
+            "name": component,
+            "unit": "rad" if component == "rz" else "m",
+            "values": result.displacement[:, column].tolist(),
+            "peak": float(result.peak_displacement[column]),
+            "peak_time": float(result.peak_time_s[column]),
+        })
+    return {
+        **transient_summary(result),
+        "times": result.times_s.tolist(),
+        "repeated_times": bool(np.any(np.diff(result.times_s) == 0)),
+        "nodes": list(nodes.values()),
+    }
+
+
 def export_result_view(result, output):
     """Write a self-contained HTML report at a new path and return that path."""
     output = Path(output)
     if output.suffix.lower() != ".html":
         raise ViewerOutputError("the viewer output must have an .html extension")
+    if isinstance(result, TransientResult):
+        template_name = "transient"
+        scene = _transient_scene(result)
+    else:
+        template_name = "report"
+        scene = _modal_scene(result) if isinstance(result, ModalResult) else _scene(result)
     resources = files(__package__)
-    template = resources.joinpath("report.html").read_text(encoding="utf-8")
-    script = resources.joinpath("report.js").read_text(encoding="utf-8")
+    template = resources.joinpath(f"{template_name}.html").read_text(encoding="utf-8")
+    script = resources.joinpath(f"{template_name}.js").read_text(encoding="utf-8")
     head, body = template.split("<!-- REPORT -->")
-    scene = _modal_scene(result) if isinstance(result, ModalResult) else _scene(result)
     payload = json.dumps(scene, allow_nan=False, separators=(",", ":"))
     payload = payload.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+    if isinstance(result, TransientResult) and len(payload) > _TRANSIENT_VIEW_LIMIT:
+        raise ViewerOutputError("transient report data exceeds the 32 MiB limit")
     page = (head + '<script type="application/json" id="result-data">' + payload + "</script>\n"
             + "<script>\n" + script + "\n</script>" + body)
     try:

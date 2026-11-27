@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-native-fem"
-version = "0.1.0a9"
+version = "0.1.0a10"
 description = "Small classical beam, plate and planar structure finite element models"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -28,7 +28,7 @@ Repository = "https://github.com/lynxpurr/ai-native-fem"
 include = ["anf", "anf.*"]
 
 [tool.setuptools.package-data]
-"anf.viewer" = ["report.html", "report.js"]
+"anf.viewer" = ["report.html", "report.js", "transient.html", "transient.js"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
