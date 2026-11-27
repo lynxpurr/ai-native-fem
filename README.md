@@ -3,20 +3,19 @@
 ANF is a Python research package for linear finite element analysis of
 Euler–Bernoulli cantilevers, rectangular Reissner–Mindlin plates, and planar
 trusses and frames, with consistent-mass modal, harmonic and transient dynamics
-for the planar models. The `v0.1.0a7` research prerelease adds schema 1.5
-harmonic response and linear Newmark transients; `v0.1.0a6` added schema 1.4
-modal analysis.
-[GitHub prerelease](https://github.com/lynxpurr/ai-native-fem/releases/tag/v0.1.0a7) ·
-[Release notes](docs/releases/0.1.0a7.md)
+and linearized elastic buckling for the planar models. The `v0.1.0a8` research
+prerelease adds schema 1.6 elastic buckling with a declared nodal preload.
+[GitHub prerelease](https://github.com/lynxpurr/ai-native-fem/releases/tag/v0.1.0a8) ·
+[Release notes](docs/releases/0.1.0a8.md)
 
 ## Install
 
 Create and activate a virtual environment with Python 3.11 or newer.
-Download `ai_native_fem-0.1.0a7-py3-none-any.whl` from the prerelease and
+Download `ai_native_fem-0.1.0a8-py3-none-any.whl` from the prerelease and
 run this command from the directory containing the wheel.
 
 ```sh
-python -m pip install "./ai_native_fem-0.1.0a7-py3-none-any.whl"
+python -m pip install "./ai_native_fem-0.1.0a8-py3-none-any.whl"
 ```
 
 The base installation provides the Python API and the `anf` command. Pip
@@ -37,9 +36,9 @@ print(result.deflection[-1])  # approximately 0.0126984 m
 ### Command line
 
 Get the example inputs from the matching source distribution on the release
-page or the `v0.1.0a7` tag. Run these commands from the directory containing
+page or the `v0.1.0a8` tag. Run these commands from the directory containing
 `examples/`. Choose a fresh output directory each time you solve.
-[Tagged cantilever input](https://github.com/lynxpurr/ai-native-fem/blob/v0.1.0a7/examples/models/cantilever.json)
+[Tagged cantilever input](https://github.com/lynxpurr/ai-native-fem/blob/v0.1.0a8/examples/models/cantilever.json)
 
 ```sh
 anf validate examples/models/cantilever.json --json
@@ -126,6 +125,31 @@ transient path integrates `M a + C v + K u = f` with the average-acceleration
 Newmark method on a uniform grid and stores the full `u`/`v`/`a` history, the
 energy series and summary peaks. [Forced-response guide](docs/forced-response.md)
 
+## Run a buckling analysis
+
+Install the a8 wheel with the `sparse` extra to run schema 1.6 elastic buckling.
+Use the examples from the matching source distribution or tag. The declared
+nodal load is the
+reference preload; the solver returns the positive load factors and modes, so
+`critical_factor * reference load` is the critical physical load.
+
+```python
+from pathlib import Path
+from anf.stability import solve_buckling, solve_preload
+
+model = Path("examples/buckling/cantilever-column.json").read_bytes()
+preload = solve_preload(model)
+print(preload.axial_forces[:3], preload.relative_residual)
+
+result = solve_buckling(model)
+print(result.critical_factor, result.factors, result.residuals)
+```
+
+The geometric stiffness uses the axial preload only, with tension positive, so
+compression lowers the stiffness and tension produces no positive factor. The
+result is a linear elastic bifurcation factor, not a capacity or a post-buckling
+path. [Buckling guide](docs/buckling.md)
+
 ## Mesh studies and local MCP
 
 - Run a mesh convergence study to compare explicit grids and save a replayable
@@ -140,7 +164,7 @@ energy series and summary peaks. [Forced-response guide](docs/forced-response.md
 Install the wheel with the `mcp` extra to enable the server.
 
 ```sh
-python -m pip install "./ai_native_fem-0.1.0a7-py3-none-any.whl[mcp]"
+python -m pip install "./ai_native_fem-0.1.0a8-py3-none-any.whl[mcp]"
 ```
 
 Configure your client to launch `anf-mcp --workspace PATH`. Use an existing
@@ -169,6 +193,9 @@ writable directory for the local artifacts.
   harmonic loads, linear Newmark transient presets, versioned response
   artifacts and bounded frequency/step budgets. Requires the `sparse` extra;
   Python-only. [Forced-response guide](docs/forced-response.md)
+- **Elastic buckling.** Schema 1.6 planar models with a nodal preload,
+  axial-force geometric stiffness, Euler anchors and positive load factors.
+  Requires the `sparse` extra; Python-only. [Buckling guide](docs/buckling.md)
 
 Use SI units. Dense assembly limits model size, and fine meshes can be
 poorly conditioned. The direct Python solvers raise `ArithmeticError` on

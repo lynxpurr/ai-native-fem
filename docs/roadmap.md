@@ -87,6 +87,21 @@ Reaction recovery, response spectra, modal damping ratios, nonlinear Newmark,
 array or table force histories, variable time steps and a modal-superposition
 harmonic path remain separate designs.
 
+## Elastic buckling in 0.1.0a8
+
+Schema 1.6 adds linearized elastic bifurcation for planar trusses and frames:
+
+- the declared nodal load is the reference preload, and the solver reports
+  positive load factors, K-orthonormal modes and eigenpair residuals;
+- the geometric stiffness uses the axial preload only (tension positive), with
+  Euler anchors for fixed-free, pinned-pinned and fixed-fixed columns;
+- mechanisms, tension-only states and non-converged eigenpairs are rejected
+  instead of producing a factor.
+
+Nonlinear capacity, post-buckling paths, imperfection sensitivity, plate/shell
+and lateral-torsional buckling, result artifacts and CLI/MCP entries remain
+separate designs.
+
 ## Plate research
 
 The rectangular MITC4 implementation covers hard simply supported edges under

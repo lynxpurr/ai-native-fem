@@ -215,6 +215,13 @@ def _dynamics_nodal(loads, nodes, frame_nodes, dynamics):
 
 def _structure(parameters, loads, version, *, dynamics=None):
     parameters = _fields(parameters, "/model", ("nodes", "members", "supports"))
+    if version == "1.6":
+        for name, member in (parameters["members"].items()
+                             if isinstance(parameters["members"], Mapping) else ()):
+            if isinstance(member, Mapping) and "end_connections" in member:
+                raise ModelValidationError(
+                    f"/model/members/{name}/end_connections", "unsupported_member",
+                    "buckling requires members without end connections")
     nodes = _nodes(parameters["nodes"])
     members, frame_nodes = _members(parameters["members"], nodes,
                                     jointed=version == "1.3",
@@ -232,6 +239,14 @@ def _structure(parameters, loads, version, *, dynamics=None):
         nodal = _dynamics_nodal(loads, nodes, frame_nodes, dynamics)
         mesh = _mesh(nodes, members, frame_nodes, original_axis=True)
         return model, {"nodal": nodal}, mesh
+    if version == "1.6":
+        for name in ("uniform_transverse", "member_line"):
+            if isinstance(loads, Mapping) and name in loads:
+                raise ModelValidationError(f"/loads/{name}", "unsupported_load",
+                                           "buckling accepts nodal preloads only")
+        loads = _fields(loads, "/loads", (), {"nodal": {}})
+        nodal = _components(loads["nodal"], "/loads/nodal", nodes, frame_nodes, FORCES)
+        return model, {"nodal": nodal}, _mesh(nodes, members, frame_nodes)
     if version in ("1.2", "1.3"):
         from .loads import _load_definitions
 
@@ -455,7 +470,7 @@ def _solve(model, nodal, member_line=None, *, sparse=None):
         ])
         local = None
         if member_line is None and is_frame:
-            local = element.local_load(model.loads["uniform_transverse"].get(segment.member, 0.0))
+            local = element.local_load(model.loads.get("uniform_transverse", {}).get(segment.member, 0.0))
         elif member_line is not None and segment.member in member_line:
             first, last = member_line[segment.member]
             count = member["elements"]

@@ -7,7 +7,7 @@ input normalization, load-scale-independent residuals, numeric range failures
 and rejection of non-finite or unbalanced solutions: 67 cases in total, passing
 in both Linux environments. CI builds distributions and
 runs tests against the installed wheel outside the checkout.
-This record covers the tested prototype and the 0.1.0a5, 0.1.0a6 and 0.1.0a7 additions; it
+This record covers the tested prototype and the additions through 0.1.0a8. It
 does not certify another development version of ANF. See [methods](methods.md) for
 equations and restrictions.
 
@@ -157,14 +157,23 @@ nonzero initial state matches its analytic decay, and summary peaks and energy
 are bitwise identical to recomputation from the stored arrays. Undamped exact
 resonance is rejected rather than reported as a finite amplitude.
 
-The installation matrix runs without SciPy first and then with the `sparse`
-extra on Linux Python 3.11/3.12 and Windows 3.12. At this revision the base
-installation runs 449 tests with 60 skipped (30 sparse tests, two modal modules
-and 28 forced-response solver tests); installing the extra runs 523 tests.
+For schema 1.6 buckling, the fixed-free, pinned-pinned and fixed-fixed Euler
+loads converge at fourth order: 16-element errors are `1.29e-7`, `2.06e-6` and
+`3.28e-5`, and the halving ratio is `15.6`–`16.0`. Scaling the reference load
+leaves the physical critical load invariant to `1e-12`; the preload residual
+stays below `2.3e-14` and the eigenpair residual below `5.1e-11`. `K_g` is
+negative semidefinite under compression and positive semidefinite under tension,
+and tension-only or mechanism states are rejected without a factor.
+
+At integration commit `27718fc`, CI installed the wheel and source distribution
+separately on Linux Python 3.11 and 3.12 and Windows Python 3.12. For each
+package, the full suite reported 464 passed and 68 skipped before installing
+SciPy and 546 passed with the `sparse` extra.
+[CI installation logs](https://github.com/lynxpurr/ai-native-fem/actions/runs/45922487091)
 
 Uniform-pressure rectangles, one-plane cantilever bending, planar truss/frame
 statics, cantilever parameter studies, the documented native mesh projections,
-schema 1.4 modal analysis and schema 1.5 harmonic and transient forced dynamics
-are the tested application families. The tests do not certify
+schema 1.4 modal analysis, schema 1.5 harmonic and transient forced dynamics and
+schema 1.6 linearized elastic buckling are the tested application families. The tests do not certify
 arbitrary inputs or engineering use. Dense assembly also restricts model size;
 the sparse backend does not remove the declared limits.
