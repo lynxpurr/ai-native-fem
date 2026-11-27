@@ -387,7 +387,7 @@ def _member_offsets(data, members, directory):
         raise ArtifactError("unexpected data before ZIP directory")
 
 
-def _read_header(stream, shape, declared_size):
+def _read_header(stream, shape, declared_size, *, allow_fortran=False):
     prefix = stream.read(10)
     if len(prefix) != 10 or prefix[:8] != b"\x93NUMPY\x01\x00":
         raise ArtifactError("expected NPY format 1.0")
@@ -399,7 +399,9 @@ def _read_header(stream, shape, declared_size):
         raise ArtifactError("invalid NPY header length")
     fields = literal_eval(header.decode("latin1").strip())
     if (not isinstance(fields, dict) or fields.keys() != {"descr", "fortran_order", "shape"}
-            or fields["descr"] != _DTYPE.str or fields["fortran_order"] is not False
+            or fields["descr"] != _DTYPE.str
+            or type(fields["fortran_order"]) is not bool
+            or (fields["fortran_order"] and not allow_fortran)
             or not isinstance(fields["shape"], tuple) or fields["shape"] != shape
             or any(type(size) is not int for size in fields["shape"])):
         raise ArtifactError("NPY dtype, order or shape does not match the model")
@@ -428,7 +430,7 @@ def _member_payload(data, member, offset):
     return payload
 
 
-def _read_arrays(data, layout, expanded_limit=_EXPANDED_LIMIT):
+def _read_arrays(data, layout, expanded_limit=_EXPANDED_LIMIT, *, allow_fortran=False):
     directory = _zip_directory(data)
     names = {f"{name}.npy": shape for name, (shape, _, _) in layout.items()}
     with ZipFile(BytesIO(data)) as archive:
@@ -450,7 +452,7 @@ def _read_arrays(data, layout, expanded_limit=_EXPANDED_LIMIT):
             if elements > _ELEMENT_LIMIT or member.file_size > 10 + _HEADER_LIMIT + elements * _DTYPE.itemsize:
                 raise ArtifactError("NPY member exceeds its model-derived budget")
             with archive.open(member) as stream:
-                _read_header(stream, shape, member.file_size)
+                _read_header(stream, shape, member.file_size, allow_fortran=allow_fortran)
         arrays = {
             member.filename[:-4]: np.load(BytesIO(_member_payload(data, member, start)),
                                           allow_pickle=False, max_header_size=_HEADER_LIMIT)

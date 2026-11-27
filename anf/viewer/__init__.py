@@ -7,7 +7,9 @@ from pathlib import Path
 
 import numpy as np
 
-from ..artifacts import load_result
+from ..artifacts import ArtifactError, _read_regular, _require_directory, load_result
+from ..dynamics import ModalResult, load_modal_result
+from ..model import _JSON_LIMIT
 
 
 class ViewerOutputError(ValueError):
@@ -25,7 +27,17 @@ class FieldDescriptor:
 
 
 def open_result_artifact(directory):
-    """Read a static 1.0 or 1.1 artifact using the standard result reader."""
+    """Read a static or modal artifact using its versioned result reader."""
+    directory = Path(directory)
+    try:
+        _require_directory(directory)
+        manifest = json.loads(_read_regular(directory / "manifest.json", _JSON_LIMIT))
+        if isinstance(manifest, dict) and manifest.get("schema_version") == "1.4":
+            return load_modal_result(directory)
+    except (OSError, ValueError, RecursionError) as error:
+        if isinstance(error, ArtifactError):
+            raise
+        raise ArtifactError(f"invalid result artifact: {error}") from error
     return load_result(directory)
 
 
@@ -39,7 +51,7 @@ def _structure_geometry(model):
     supports = [(named[name], component, "rad" if component == "rz" else "m", value)
                 for name, row in model.model["supports"].items() for component, value in row.items()]
     loads = [(named[name], labels[named[name]], component, "N·m" if component == "mz" else "N", value)
-             for name, row in model.loads["nodal"].items() for component, value in row.items()]
+             for name, row in model.loads.get("nodal", {}).items() for component, value in row.items()]
     first_segments = {}
     last_segments = {}
     for segment in mesh.segments:
@@ -47,10 +59,10 @@ def _structure_geometry(model):
         last_segments[segment.member] = segment.nodes
     ends = [(name, first_segments[name], last_segments[name][::-1])
             for name in mesh.member_order]
+    uniform = model.loads.get("uniform_transverse", {})
     for name, first, last in ends:
-        if name in model.loads["uniform_transverse"]:
-            loads.append(([first[0], last[0]], name, "uniform transverse (local +y)", "N/m",
-                          model.loads["uniform_transverse"][name]))
+        if name in uniform:
+            loads.append(([first[0], last[0]], name, "uniform transverse (local +y)", "N/m", uniform[name]))
     return {
         "coordinates": "Global X–Y",
         "points": [(*point, 0) for point in mesh.coordinates],
@@ -158,6 +170,54 @@ def _scene(result):
     }
 
 
+def modal_summary(result):
+    """Return the identity and saved modal measurements shown in the viewer."""
+    return {
+        "schema_version": "1.4",
+        "kind": "modal_result",
+        "input_hash": result.input_hash,
+        "frequencies_hz": result.frequencies_hz.tolist(),
+        "residuals": result.residuals.tolist(),
+        "rigid_mode_count": result.rigid_mode_count,
+        "truncated": result.truncated,
+        "diagnostics": list(result.diagnostics),
+        "versions": dict(result.versions),
+    }
+
+
+def _modal_scene(result):
+    model = result.model
+    geometry = _structure_geometry(model)
+    nodes = {key: index for index, key in enumerate(model.mesh.node_order)}
+    component_nodes = {"ux": [], "uy": [], "rz": []}
+    component_rows = {"ux": [], "uy": [], "rz": []}
+    for row, (*key, component) in enumerate(result.dof_labels):
+        component_nodes[component].append(nodes[tuple(key)])
+        component_rows[component].append(row)
+
+    modes = []
+    for values in result.modes.T:
+        motion = np.zeros((len(nodes), 3))
+        motion[component_nodes["ux"], 0] = values[component_rows["ux"]]
+        motion[component_nodes["uy"], 1] = values[component_rows["uy"]]
+        peak = np.max(np.abs(motion))
+        if peak:
+            motion /= peak
+            motion /= np.max(np.hypot(motion[:, 0], motion[:, 1]))
+        modes.append({
+            "motion": motion.tolist(),
+            "fields": [{
+                "name": component,
+                "unit": "mass-normalized coefficient",
+                "position": "free frame node" if component == "rz" else "free node",
+                "coordinates": geometry["coordinates"],
+                "nodes": component_nodes[component],
+                "values": values[rows].tolist(),
+            } for component, rows in component_rows.items() if rows],
+        })
+    return {**geometry, **modal_summary(result), "problem": model.problem_type, "modes": modes}
+
+
 def export_result_view(result, output):
     """Write a self-contained HTML report at a new path and return that path."""
     output = Path(output)
@@ -167,7 +227,8 @@ def export_result_view(result, output):
     template = resources.joinpath("report.html").read_text(encoding="utf-8")
     script = resources.joinpath("report.js").read_text(encoding="utf-8")
     head, body = template.split("<!-- REPORT -->")
-    payload = json.dumps(_scene(result), allow_nan=False, separators=(",", ":"))
+    scene = _modal_scene(result) if isinstance(result, ModalResult) else _scene(result)
+    payload = json.dumps(scene, allow_nan=False, separators=(",", ":"))
     payload = payload.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
     page = (head + '<script type="application/json" id="result-data">' + payload + "</script>\n"
             + "<script>\n" + script + "\n</script>" + body)
