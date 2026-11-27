@@ -67,7 +67,7 @@ def test_view_matches_inspect_and_preserves_planar_associations(tmp_path):
     assert [left, midpoint] in scene["cells"]
     assert [midpoint, right] in scene["cells"]
     assert scene["labels"].index("ground") not in scene["frame_nodes"]
-    assert ["girder", left, right] in scene["member_ends"]
+    assert ["girder", [left, midpoint], [right, midpoint]] in scene["member_ends"]
     assert [[left, right], "girder", "uniform transverse (local +y)", "N/m", -5] in scene["loads"]
     fields = {field["name"]: field for field in scene["fields"]}
     for name, field in fields.items():

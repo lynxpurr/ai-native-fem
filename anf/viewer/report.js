@@ -62,9 +62,11 @@ for (const [label, value] of [
 
 function samples(field) {
     if (field.position === "member_end") {
-        return scene.member_ends.flatMap(([name, i, j], index) => [
-            {label: name + " / i (" + scene.labels[i] + ")", location: [i, j, 0.15], value: field.values[2 * index]},
-            {label: name + " / j (" + scene.labels[j] + ")", location: [j, i, 0.15], value: field.values[2 * index + 1]},
+        return scene.member_ends.flatMap(([name, first, last], index) => [
+            {label: name + " / i (" + scene.labels[first[0]] + ")", location: [...first, 0.15],
+                value: field.values[2 * index]},
+            {label: name + " / j (" + scene.labels[last[0]] + ")", location: [...last, 0.15],
+                value: field.values[2 * index + 1]},
         ]);
     }
     const nodes = field.position === "frame_node" ? scene.frame_nodes : scene.labels.map((_, i) => i);

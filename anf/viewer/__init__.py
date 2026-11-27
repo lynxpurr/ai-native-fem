@@ -40,11 +40,16 @@ def _structure_geometry(model):
                 for name, row in model.model["supports"].items() for component, value in row.items()]
     loads = [(named[name], labels[named[name]], component, "N·m" if component == "mz" else "N", value)
              for name, row in model.loads["nodal"].items() for component, value in row.items()]
-    ends = [(name, named[model.model["members"][name]["i"]], named[model.model["members"][name]["j"]])
+    first_segments = {}
+    last_segments = {}
+    for segment in mesh.segments:
+        first_segments.setdefault(segment.member, segment.nodes)
+        last_segments[segment.member] = segment.nodes
+    ends = [(name, first_segments[name], last_segments[name][::-1])
             for name in mesh.member_order]
-    for name, left, right in ends:
+    for name, first, last in ends:
         if name in model.loads["uniform_transverse"]:
-            loads.append(([left, right], name, "uniform transverse (local +y)", "N/m",
+            loads.append(([first[0], last[0]], name, "uniform transverse (local +y)", "N/m",
                           model.loads["uniform_transverse"][name]))
     return {
         "coordinates": "Global X–Y",

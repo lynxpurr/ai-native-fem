@@ -21,7 +21,8 @@ requests. Treat the HTML as a copy of the displayed analysis data when sharing i
 - **Scalar field.** Choose an array to display its sample values, units,
   association, and coordinate system. Frame rotations appear at frame nodes.
   Member end actions use local member axes and show separate markers inset
-  from the directed i and j ends. Read exact values in the field sample table.
+  from the directed i and j ends along their terminal mesh segments. Read
+  exact values in the field sample table.
 - **Loads and supports.** Squares mark the declared locations. Open the
   respective tables for component, sign, units, and value. The plate pressure
   marker denotes the surface load. Uniform line loads are marked at midspan.
