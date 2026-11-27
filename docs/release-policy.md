@@ -39,14 +39,18 @@ does not establish source rights. See the
 | `anf.parameter_studies.ParameterGrid`, `run_parameter_study`, `finite_difference_sensitivity` | Cantilever parameter grids and local finite differences with checkpointed samples, JSON and SVG. [Parameter studies](parameter-studies.md) |
 | `anf.dynamics.assemble_mass`, `solve_modes`, `ModalResult`, `anf.application.run_modal` | Consistent-mass planar modal analysis for schema 1.4 trusses and frames, with mass-normalized modes, frequencies and residuals. Requires the `sparse` extra; Python only. [Modal guide](modal.md) |
 | `anf.dynamics.save_modal_result`, `load_modal_result` | Versioned modal artifacts with the model fingerprint, DOF labels, array digest, truncation diagnostics and read-only reload. [Modal guide](modal.md#artifacts) |
+| `anf.dynamics.harmonic_response`, `transient_response`, `HarmonicResult`, `TransientResult`, `anf.application.run_harmonic`, `run_transient` | Harmonic response and linear Newmark transients with Rayleigh damping for schema 1.5 planar trusses and frames, with backward-error checks and declared frequency, step and DOF-time budgets. Requires the `sparse` extra; Python only. [Forced-response guide](forced-response.md) |
+| `anf.dynamics.save_harmonic_result`, `load_harmonic_result`, `save_transient_result`, `load_transient_result` | Versioned harmonic and transient response artifacts with the model fingerprint, DOF labels, array digest and diagnostics; loading rejects a changed digest or input hash. [Forced-response guide](forced-response.md#artifacts) |
+| `anf.stability.solve_preload`, `solve_buckling`, `PreloadResult`, `BucklingResult` | Linearized elastic buckling for schema 1.6 planar trusses and frames. The declared nodal load is the reference preload; the solver returns positive load factors, K-orthonormal modes and eigenpair residuals. Requires the `sparse` extra; Python only, with no result artifact. [Buckling guide](buckling.md) |
 | `anf-mcp --workspace PATH` | Optional local stdio server for capabilities, validation, solves, studies and artifact inspection. [MCP guide](mcp.md) |
 
 The base installation uses NumPy 2.x and includes the Python and CLI
 workflows. The `mcp` extra installs the MCP Python SDK and AnyIO to enable the
 stdio server. The `test` extra supplies pytest and build tooling. These
 dependencies and the optional SciPy backend are installed separately. The same
-SciPy extra enables modal analysis. Retain their applicable license files
-when redistributing a complete environment. See [NOTICE](../NOTICE).
+SciPy extra enables modal, forced-response and buckling analysis. Retain their
+applicable license files when redistributing a complete environment. See
+[NOTICE](../NOTICE).
 List API and report-schema migration instructions in the release notes when
 behavior changes. The verification guide documents the preserved default Q4
 fingerprint and the distinct MITC4 fingerprint.
@@ -60,9 +64,11 @@ its own clean environment outside the checkout. The jobs run the installed
 test suite and the beam, plate and parameter-study examples. The suite exercises
 the planar structure declarations, F1–F4 cases, and result inspection
 through the installed Python, CLI and MCP entry points. The jobs exercise the
-MCP extra. The suite first runs without SciPy, then each installation checks
-the sparse path with the extra enabled. The dependency-advisory workflow
-audits the resolved test, MCP and sparse dependencies. After the checks pass, each job uploads both
+MCP extra. The suite first runs without SciPy. Each installation then adds the
+`sparse` extra and runs the complete suite again, covering the sparse backend
+and the modal, forced-response and buckling solvers. The dependency-advisory
+workflow audits the resolved test, MCP and sparse dependencies. After the
+checks pass, each job uploads both
 packages, `SHA256SUMS` and `release-manifest.json`. The manifest records the
 commit, tree, version, checked paths, package hashes, installed dependencies
 and CI run and attempt. For pull requests, it also records the base and
