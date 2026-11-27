@@ -7,7 +7,7 @@ input normalization, load-scale-independent residuals, numeric range failures
 and rejection of non-finite or unbalanced solutions: 67 cases in total, passing
 in both Linux environments. CI builds distributions and
 runs tests against the installed wheel outside the checkout.
-This record covers the tested prototype and the additions through 0.1.0a8. It
+This record covers the tested prototype and the additions through 0.1.0a9. It
 does not certify another development version of ANF. See [methods](methods.md) for
 equations and restrictions.
 
@@ -170,6 +170,11 @@ separately on Linux Python 3.11 and 3.12 and Windows Python 3.12. For each
 package, the full suite reported 464 passed and 68 skipped before installing
 SciPy and 546 passed with the `sparse` extra.
 [CI installation logs](https://github.com/lynxpurr/ai-native-fem/actions/runs/45922487091)
+
+The offline viewer is exercised with beam, plate, planar structure, and modal
+artifacts. Its checks cover saved values and units, model-derived DOF order,
+damaged artifacts, and distinct static and modal display semantics. The modal
+reader accepts empty selections and both byte orders for stored float64 arrays.
 
 Uniform-pressure rectangles, one-plane cantilever bending, planar truss/frame
 statics, cantilever parameter studies, the documented native mesh projections,
