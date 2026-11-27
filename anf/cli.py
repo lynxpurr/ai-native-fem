@@ -8,6 +8,7 @@ import sys
 from .application import run_analysis
 from .artifacts import ArtifactError, load_result, save_result
 from .model import ModelValidationError, _JSON_LIMIT, canonical_input_hash, validate_model
+from .viewer import ViewerOutputError, export_result_view, open_result_artifact
 
 
 class _UsageError(ValueError):
@@ -33,7 +34,10 @@ def _parser():
 
     inspect = commands.add_parser("inspect", help="read a result directory", allow_abbrev=False)
     inspect.add_argument("artifact", type=Path)
-    for command in (validate, solve, inspect):
+    view = commands.add_parser("view", help="export an offline result viewer", allow_abbrev=False)
+    view.add_argument("artifact", type=Path)
+    view.add_argument("--output", required=True, type=Path)
+    for command in (validate, solve, inspect, view):
         command.add_argument("--json", action="store_true", default=argparse.SUPPRESS,
                              help="emit one JSON object on stdout")
     return parser
@@ -70,6 +74,10 @@ def _summary(result, path):
 def _dispatch(args):
     if args.command == "inspect":
         return _summary(load_result(args.artifact), args.artifact), 0
+    if args.command == "view":
+        result = open_result_artifact(args.artifact)
+        path = export_result_view(result, args.output)
+        return {**_summary(result, args.artifact), "output": str(path.absolute())}, 0
     model = _read_model(args.model)
     if args.command == "validate":
         return {"input_status": "valid", "input_hash": canonical_input_hash(model),
@@ -107,6 +115,9 @@ def main(argv=None):
     except ArtifactError as error:
         path = "/output" if args.command == "solve" else "/artifact"
         _error("artifact_io", path, str(error), machine=args.json)
+        return 4
+    except ViewerOutputError as error:
+        _error("artifact_io", "/output", str(error), machine=args.json)
         return 4
 
     print(json.dumps(payload, allow_nan=False, indent=None if args.json else 2))

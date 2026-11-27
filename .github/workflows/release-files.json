@@ -40,7 +40,10 @@
     "anf/stability.py",
     "anf/structures.py",
     "anf/studies.py",
-    "anf/verification.py"
+    "anf/verification.py",
+    "anf/viewer/__init__.py",
+    "anf/viewer/report.html",
+    "anf/viewer/report.js"
   ],
   "licenses": [
     "LICENSE",
@@ -76,6 +79,7 @@
     "docs/sparse.md",
     "docs/validation.md",
     "docs/verification.md",
+    "docs/viewer.md",
     "examples/README.md",
     "examples/beam.py",
     "examples/buckling/cantilever-column.json",
@@ -131,6 +135,7 @@
     "tests/test_robustness.py",
     "tests/test_sparse_parity.py",
     "tests/test_studies_reports.py",
-    "tests/test_verification.py"
+    "tests/test_verification.py",
+    "tests/test_viewer_contract.py"
   ]
 }
