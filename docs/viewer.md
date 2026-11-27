@@ -51,5 +51,17 @@ saved frequencies in the details. An artifact with an empty mode selection
 opens with the original mesh and the playback controls disabled.
 
 `view` reads an artifact without running the solver. Opening a saved modal
-result works with the base installation. Batch results, frequency response,
-time histories and buckling require separate artifact views.
+result works with the base installation.
+
+## View a transient displacement history
+
+Use the same command with a schema 1.5 artifact created by
+[save_transient_result](forced-response.md#artifacts). Choose a node and
+degree of freedom to see the saved displacement in metres or rotation in
+radians versus absolute time in seconds. The orange marker shows the first
+sample at the absolute peak. The readout includes its original sign, and
+the sample index control retrieves any recorded sample. The report opens
+offline with the base installation.
+
+Batch results, frequency response, and buckling require separate artifact
+views. The transient report covers displacement and rotation histories.

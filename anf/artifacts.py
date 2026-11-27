@@ -432,7 +432,7 @@ def _member_payload(data, member, offset):
 
 
 def _read_arrays(data, layout, expanded_limit=_EXPANDED_LIMIT, *,
-                 allow_fortran=False, allow_big_endian=False):
+                 allow_fortran=False, allow_big_endian=False, element_limit=_ELEMENT_LIMIT):
     directory = _zip_directory(data)
     names = {f"{name}.npy": shape for name, (shape, _, _) in layout.items()}
     with ZipFile(BytesIO(data)) as archive:
@@ -451,7 +451,7 @@ def _read_arrays(data, layout, expanded_limit=_EXPANDED_LIMIT, *,
                 raise ArtifactError("stored ZIP member length is inconsistent")
             shape = names[member.filename]
             elements = math.prod(shape)
-            if elements > _ELEMENT_LIMIT or member.file_size > 10 + _HEADER_LIMIT + elements * _DTYPE.itemsize:
+            if elements > element_limit or member.file_size > 10 + _HEADER_LIMIT + elements * _DTYPE.itemsize:
                 raise ArtifactError("NPY member exceeds its model-derived budget")
             with archive.open(member) as stream:
                 _read_header(stream, shape, member.file_size, allow_fortran=allow_fortran,

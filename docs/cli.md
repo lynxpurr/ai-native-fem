@@ -21,7 +21,7 @@ Its parent directory must already exist. `inspect` reads an existing result
 and returns the report, diagnostics and array metadata. Use the
 [Python artifact reader](model-format.md) to access the numeric arrays.
 `view` exports an [offline HTML viewer](viewer.md) for static artifacts and
-saved schema 1.4 modal artifacts.
+saved schema 1.4 modal or schema 1.5 transient artifacts.
 
 `validate`, `solve` and `inspect` accept schema 1.0 beam/plate declarations
 and schema 1.1 planar structure declarations. Named load cases,

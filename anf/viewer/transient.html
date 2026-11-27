@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<title>ANF transient displacement</title>
+<style>
+:root { color-scheme: light; color: #142438; background: #f2f5f8; font: 16px/1.5 system-ui, sans-serif; }
+body { margin: 0; }
+main { max-width: 66rem; margin: auto; padding: clamp(1rem, 4vw, 3rem); }
+h1, p { margin: 0; }
+h1 { font-size: clamp(1.7rem, 4vw, 2.4rem); letter-spacing: -.04em; }
+header { margin-bottom: 1rem; }
+.panel { padding: 1rem; border: 1px solid #d5dfe9; border-radius: .65rem; background: white; margin-bottom: 1rem; }
+.controls { display: flex; flex-wrap: wrap; gap: .75rem 1.5rem; }
+label { display: grid; gap: .25rem; font-weight: 600; }
+select, input { color: inherit; border: 1px solid #8798aa; border-radius: .3rem; padding: .4rem .5rem; font: inherit; max-width: 100%; }
+#sample { width: 6rem; }
+#axis-y { margin-top: 1rem; }
+#time-axis { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .4rem; }
+#diagnostics:empty { display: none; }
+canvas { display: block; width: 100%; height: clamp(230px, 45vw, 410px); background: #f8fbfd; margin: .45rem 0; }
+#peak, #sample-value { margin-top: .75rem; color: #173e69; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+summary { cursor: pointer; font-weight: 600; }
+dt { font-weight: 600; }
+dd { margin: 0 0 .4rem; overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Transient displacement</h1>
+    <p id="time-grid"></p>
+    <ul id="diagnostics"></ul>
+  </header>
+  <section class="panel" aria-label="Displacement history">
+    <div class="controls">
+      <label>Node <select id="node"></select></label>
+      <label>Degree of freedom <select id="component"></select></label>
+    </div>
+    <p id="axis-y"></p>
+    <canvas id="history" role="img" aria-label="Displacement versus time. Use Sample index to read an exact value."></canvas>
+    <p id="time-axis"><span id="first-time"></span><span>Time (s)</span><span id="last-time"></span></p>
+    <p id="peak" aria-live="polite"></p>
+    <div class="controls">
+      <label>Sample index <input id="sample" type="number" min="0" step="1" value="0"></label>
+      <p id="sample-value" aria-live="polite"></p>
+    </div>
+  </section>
+  <section class="panel" aria-label="Artifact metadata">
+    <details><summary>Artifact details</summary><dl id="metadata"></dl></details>
+  </section>
+</main>
+<!-- REPORT -->
+</body>
+</html>
