@@ -102,6 +102,13 @@ Nonlinear capacity, post-buckling paths, imperfection sensitivity, plate/shell
 and lateral-torsional buckling, result artifacts and CLI/MCP entries remain
 separate designs.
 
+## Offline result viewer in 0.1.0a9
+
+`anf view` exports a standalone HTML report for saved schema 1.0/1.1 static
+artifacts and schema 1.4 modal artifacts. The static report shows the original
+and deformed meshes, fields, loads, and supports. The modal report adds mode
+selection, frequencies, relative residuals, and illustrative playback.
+
 ## Plate research
 
 The rectangular MITC4 implementation covers hard simply supported edges under
