@@ -8,11 +8,11 @@ becomes singular, together with the corresponding buckling modes.
 
 This is a linear elastic bifurcation analysis. It is not a capacity, a safety
 factor or a post-buckling path, and it does not account for imperfections,
-yielding or contact. Install the a8 wheel with the `sparse` extra to provide SciPy
+yielding or contact. Install the prerelease wheel with the `sparse` extra to provide SciPy
 for the eigensolver.
 
 ```sh
-python -m pip install "./ai_native_fem-0.1.0a8-py3-none-any.whl[sparse]"
+python -m pip install "./ai_native_fem-0.1.0a9-py3-none-any.whl[sparse]"
 ```
 
 The analysis is a Python interface; the CLI and MCP do not expose it.
