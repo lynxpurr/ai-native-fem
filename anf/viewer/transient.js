@@ -9,7 +9,8 @@ const canvas = get("history");
 let series;
 let peakIndex = 0;
 
-get("time-grid").textContent = "Schema 1.5 · " + scene.point_count + " samples · step " + scene.dt_s + " s";
+get("time-grid").textContent = "Schema 1.5 · " + scene.point_count + " samples · step " + scene.dt_s + " s"
+    + (scene.repeated_times ? " · Some saved times repeat. Use the sample index to distinguish them." : "");
 get("first-time").textContent = scene.times[0];
 get("last-time").textContent = scene.times.at(-1);
 sample.max = String(scene.point_count - 1);
@@ -44,7 +45,7 @@ function selectNode() {
 
 function selectComponent() {
     series = scene.nodes[nodeSelect.selectedIndex].components[componentSelect.selectedIndex];
-    peakIndex = scene.times.indexOf(series.peak_time);
+    peakIndex = series.values.findIndex(value => Math.abs(value) === series.peak);
     const axisName = series.unit === "rad" ? "Rotation" : "Displacement";
     get("axis-y").textContent = axisName + " (" + series.unit + ")";
     canvas.setAttribute("aria-label", axisName + " versus time. Use Sample index to read an exact value.");
@@ -55,12 +56,20 @@ function selectComponent() {
 }
 
 function showSample() {
-    if (!sample.validity.valid || sample.value === "") {
-        get("sample-value").textContent = "Choose a sample from 0 to " + sample.max + ".";
+    const index = sample.valueAsNumber;
+    if (!Number.isInteger(index) || index < 0 || index >= scene.times.length) {
+        get("sample-value").textContent = "Choose a whole-number sample index from 0 to " + sample.max + ".";
         return;
     }
-    const index = sample.valueAsNumber;
     get("sample-value").textContent = scene.times[index] + " s · " + series.values[index] + " " + series.unit;
+}
+
+function formatTicks(values) {
+    for (let precision = 4; precision <= 17; precision++) {
+        const labels = values.map(value => value.toPrecision(precision));
+        if (new Set(labels).size === values.length) return labels;
+    }
+    return values.map(String);
 }
 
 function draw() {
@@ -75,18 +84,24 @@ function draw() {
     const low = Math.min(...series.values), high = Math.max(...series.values);
     const magnitude = Math.max(Math.abs(low), Math.abs(high)) || 1;
     const bottom = low / magnitude, top = high / magnitude;
-    const leftMargin = 70, rightMargin = 15, verticalMargin = 16;
+    const tickValues = [...new Set([high, (top / 2 + bottom / 2) * magnitude, low])];
+    const tickLabels = formatTicks(tickValues);
+    context.font = "12px system-ui, sans-serif";
+    const leftMargin = Math.max(40, ...tickLabels.map(label => context.measureText(label).width + 14));
+    const rightMargin = 15, verticalMargin = 16;
     const innerWidth = width - leftMargin - rightMargin, innerHeight = height - 2 * verticalMargin;
+    if (innerWidth <= 0) return;
+    const timeAxis = get("time-axis");
+    timeAxis.style.paddingInlineStart = leftMargin + "px";
+    timeAxis.style.paddingInlineEnd = rightMargin + "px";
     const x = time => leftMargin + (time - start) / span * innerWidth;
     const y = value => top === bottom ? height / 2
         : verticalMargin + (top - value / magnitude) / (top - bottom) * innerHeight;
 
-    const tickValues = top === bottom ? [low] : [high, (top / 2 + bottom / 2) * magnitude, low];
-    context.font = "12px system-ui, sans-serif";
     context.textAlign = "right";
     context.textBaseline = "middle";
     context.lineWidth = 1;
-    for (const value of tickValues) {
+    for (const [index, value] of tickValues.entries()) {
         const row = y(value);
         context.strokeStyle = "#d5dfe9";
         context.beginPath();
@@ -94,7 +109,7 @@ function draw() {
         context.lineTo(width - rightMargin, row);
         context.stroke();
         context.fillStyle = "#465970";
-        context.fillText(value.toPrecision(4), leftMargin - 7, row);
+        context.fillText(tickLabels[index], leftMargin - 7, row);
     }
     context.beginPath();
     context.moveTo(x(start), y(series.values[0]));

@@ -256,7 +256,12 @@ def _transient_scene(result):
             "peak": float(result.peak_displacement[column]),
             "peak_time": float(result.peak_time_s[column]),
         })
-    return {**transient_summary(result), "times": result.times_s.tolist(), "nodes": list(nodes.values())}
+    return {
+        **transient_summary(result),
+        "times": result.times_s.tolist(),
+        "repeated_times": bool(np.any(np.diff(result.times_s) == 0)),
+        "nodes": list(nodes.values()),
+    }
 
 
 def export_result_view(result, output):

@@ -60,8 +60,9 @@ Use the same command with a schema 1.5 artifact created by
 degree of freedom to see the saved displacement in metres or rotation in
 radians versus absolute time in seconds. The orange marker shows the first
 sample at the absolute peak. The readout includes its original sign, and
-the sample index control retrieves any recorded sample. The report opens
-offline with the base installation.
+the sample index control retrieves any recorded sample. When large absolute
+times round to the same value, the sample index distinguishes those entries.
+The report opens offline with the base installation.
 
 Batch results, frequency response, and buckling require separate artifact
 views. The transient report covers displacement and rotation histories.

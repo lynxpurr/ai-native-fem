@@ -80,3 +80,42 @@ def test_transient_view_rejects_inconsistent_saved_history(tmp_path, transient, 
     assert summary["error"]["path"] == "/artifact"
     assert diagnostic in summary["error"]["message"]
     assert not output.exists()
+
+
+@pytest.mark.parametrize("time,expected_times,repeated", [
+    ({"start_s": 0.001, "end_s": 0.015, "steps": 7},
+     [0.001 + index * ((0.015 - 0.001) / 7) for index in range(8)], False),
+    ({"start_s": 2**52, "end_s": 2**52 + 1, "steps": 4},
+     [2**52, 2**52, 2**52, 2**52 + 1, 2**52 + 1], True),
+    ({"times_s": [0.5, 0.7500000001, 1.0]}, [0.5, 0.7500000001, 1.0], False),
+])
+def test_transient_view_preserves_published_time_grid_rounding(
+    tmp_path, transient, time, expected_times, repeated,
+):
+    doc = transient.model.to_dict()
+    doc["analysis"]["time"] = time
+    model = validate_dynamics_model(doc)
+    grid = model.dynamics.time
+    times = np.asarray(grid.times_s)
+    count = len(times)
+    assert times.tolist() == expected_times
+    displacement = np.zeros((count, len(transient.dof_labels)))
+    displacement[1, 4] = -2
+    peak_displacement = np.zeros(len(transient.dof_labels))
+    peak_displacement[4] = 2
+    peak_time_s = np.full(len(transient.dof_labels), times[0])
+    peak_time_s[4] = times[1]
+    result = replace(
+        transient, model=model, times_s=times, dt_s=grid.dt_s, start_s=grid.start_s,
+        displacement=displacement, velocity=np.zeros_like(displacement),
+        acceleration=np.zeros_like(displacement), energy=np.zeros(count),
+        peak_displacement=peak_displacement, peak_time_s=peak_time_s,
+        input_hash=canonical_dynamics_input_hash(model),
+    )
+    status, summary, report = view(tmp_path, result)
+    assert status == 0
+    assert summary["end_s"] == expected_times[-1]
+    html = report.read_text(encoding="utf-8")
+    scene = json.loads(html.split('id="result-data">', 1)[1].split("</script>", 1)[0])
+    assert scene["times"] == expected_times
+    assert scene["repeated_times"] is repeated

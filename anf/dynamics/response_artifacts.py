@@ -360,14 +360,20 @@ def _transient_view_arrays(directory, manifest, model, labels):
 def _validate_transient_view(result):
     grid = result.model.dynamics.time
     times = result.times_s
-    intervals = np.diff(times)
-    ulp = max(math.ulp(grid.start_s), math.ulp(grid.end_s))
-    tolerance = 1e-9 * result.dt_s + 2 * ulp
-    if (result.start_s != grid.start_s or times[0] != grid.start_s
-            or abs(times[-1] - grid.end_s) > math.ulp(grid.end_s)
-            or np.any(intervals <= 0) or np.any(np.abs(intervals - result.dt_s) > tolerance)
-            or abs(result.dt_s - grid.dt_s) > tolerance):
+    # The scalar solver saves its evaluated grid, which can round the last
+    # sample away from end_s or repeat a time at a large absolute offset.
+    scalar_grid = result.dt_s == grid.dt_s and np.array_equal(times, grid.times_s)
+    if result.start_s != grid.start_s or times[0] != grid.start_s:
         raise TransientArtifactError("saved time axis is inconsistent with the declared grid")
+    if not scalar_grid:
+        # Explicit grids retain their samples but serialize as start/end/steps.
+        intervals = np.diff(times)
+        ulp = max(math.ulp(grid.start_s), math.ulp(grid.end_s))
+        tolerance = 1e-9 * result.dt_s + 2 * ulp
+        if (times[-1] != grid.end_s or np.any(intervals <= 0)
+                or np.any(np.abs(intervals - result.dt_s) > tolerance)
+                or abs(result.dt_s - grid.dt_s) > tolerance):
+            raise TransientArtifactError("saved time axis is inconsistent with the declared grid")
     absolute = np.abs(result.displacement)
     indices = absolute.argmax(axis=0)
     if (not np.array_equal(result.peak_displacement, absolute[indices, np.arange(len(indices))])
