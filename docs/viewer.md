@@ -46,7 +46,9 @@ The amplitude is relative to the mesh. At amplitude 1, the largest nodal
 translation is 10% of the largest world-coordinate span at the animation's
 peak. Playback uses a fixed illustrative period. The physical frequency
 remains visible. The sign of the mode is arbitrary and repeated frequencies
-describe a subspace. Truncation and rigid-mode counts remain visible.
+describe a subspace. Rigid-body modes are labeled individually with their
+saved frequencies in the details. An artifact with an empty mode selection
+opens with the original mesh and the playback controls disabled.
 
 `view` reads an artifact without running the solver. Opening a saved modal
 result works with the base installation. Batch results, frequency response,

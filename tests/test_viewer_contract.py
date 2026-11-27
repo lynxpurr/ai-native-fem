@@ -1,5 +1,6 @@
 """Static result viewer acceptance through a saved artifact and the CLI."""
 
+from dataclasses import replace
 from hashlib import sha256
 import json
 from pathlib import Path
@@ -11,7 +12,7 @@ import pytest
 
 from anf.application import run_analysis
 from anf.artifacts import save_result
-from anf.dynamics import ModalResult, save_modal_result
+from anf.dynamics import ModalResult, load_modal_result, save_modal_result
 from anf.model import canonical_modal_input_hash, validate_modal_model
 from anf.viewer import open_result_artifact
 
@@ -221,3 +222,59 @@ def test_modal_view_rejects_inconsistent_label_order_or_shapes(tmp_path, modal_a
     assert status == 4
     assert summary["error"]["path"] == "/artifact"
     assert not output.exists()
+
+
+
+def test_modal_view_handles_a_saved_empty_selection(tmp_path, modal_artifact):
+    result, _ = modal_artifact
+    empty = replace(
+        result, eigenvalues=result.eigenvalues[:0], omega_rad_s=result.omega_rad_s[:0],
+        frequencies_hz=result.frequencies_hz[:0], residuals=result.residuals[:0],
+        modes=result.modes[:, :0],
+    )
+    directory = save_modal_result(empty, tmp_path, "empty")
+    restored = load_modal_result(directory)
+    assert restored.dof_labels == empty.dof_labels
+    assert restored.modes.shape == (len(empty.dof_labels), 0)
+    output = tmp_path / "empty.html"
+    status, summary = cli(tmp_path, "view", directory, "--output", output)
+    assert status == 0
+    assert summary["frequencies_hz"] == summary["residuals"] == []
+    assert scene_from(output)["modes"] == []
+
+
+def test_modal_reader_accepts_saved_big_endian_float64(tmp_path, modal_artifact):
+    result, directory = modal_artifact
+    archive = directory / "arrays.npz"
+    manifest = directory / "manifest.json"
+    with np.load(archive, allow_pickle=False) as arrays:
+        big_endian = {name: arrays[name].astype(">f8") for name in arrays.files}
+    np.savez_compressed(archive, **big_endian)
+    metadata = json.loads(manifest.read_bytes())
+    metadata["arrays_sha256"] = sha256(archive.read_bytes()).hexdigest()
+    manifest.write_text(json.dumps(metadata), encoding="utf-8")
+    restored = load_modal_result(directory)
+    for name in big_endian:
+        actual = getattr(restored, name)
+        assert actual.dtype == np.dtype(float)
+        np.testing.assert_array_equal(actual, getattr(result, name))
+    output = tmp_path / "big-endian.html"
+    assert cli(tmp_path, "view", directory, "--output", output)[0] == 0
+    assert scene_from(output)["frequencies_hz"] == result.frequencies_hz.tolist()
+
+
+def test_static_reader_requires_little_endian_arrays(tmp_path):
+    directory = artifact(tmp_path, "models/cantilever.json")
+    archive = directory / "arrays.npz"
+    manifest = directory / "manifest.json"
+    with np.load(archive, allow_pickle=False) as arrays:
+        big_endian = {name: arrays[name].astype(">f8") for name in arrays.files}
+    np.savez_compressed(archive, **big_endian)
+    metadata = json.loads(manifest.read_bytes())
+    metadata["arrays_sha256"] = sha256(archive.read_bytes()).hexdigest()
+    manifest.write_text(json.dumps(metadata), encoding="utf-8")
+    path = tmp_path / "static.html"
+    status, summary = cli(tmp_path, "view", directory, "--output", path)
+    assert status == 4
+    assert "dtype" in summary["error"]["message"]
+    assert not path.exists()

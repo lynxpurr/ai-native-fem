@@ -108,7 +108,7 @@ def _manifest(directory):
 
 def _arrays(directory, manifest, labels):
     count = manifest["mode_count"]
-    if type(count) is not int or not 1 <= count <= min(len(labels), 20):
+    if type(count) is not int or not 0 <= count <= min(len(labels), 20):
         raise ModalArtifactError("invalid mode count")
     layout = {name: ((count,), "mode", "") for name in _FIELDS}
     layout["modes"] = ((len(labels), count), "dof", "")
@@ -121,11 +121,11 @@ def _arrays(directory, manifest, labels):
     if sha256(data).hexdigest() != manifest["arrays_sha256"]:
         raise ModalArtifactError("array digest does not match the manifest")
     budget = (len(labels) + 4) * count * 8 + len(layout) * (10 + _HEADER_LIMIT)
-    # Published NumPy archives may store the mode matrix in Fortran order.
-    arrays, _ = _read_arrays(data, layout, budget, allow_fortran=True)
+    # The published writer used native byte order and preserved Fortran order.
+    arrays, _ = _read_arrays(data, layout, budget, allow_fortran=True, allow_big_endian=True)
     if any(np.any(arrays[name] < 0) for name in ("frequencies_hz", "omega_rad_s", "residuals")):
         raise ModalArtifactError("modal frequencies and residuals must be nonnegative")
-    return arrays
+    return {name: array.astype(float, copy=False) for name, array in arrays.items()}
 
 
 def load_modal_result(directory):

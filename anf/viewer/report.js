@@ -6,7 +6,7 @@ const fieldSelect = get("field");
 const scaleInput = get("scale");
 const canvas = get("mesh");
 const modal = scene.kind === "modal_result";
-const solved = modal || scene.solve_status === "solved";
+const solved = modal ? scene.modes.length > 0 : scene.solve_status === "solved";
 const modeSelect = get("mode");
 const play = get("play");
 const plate = scene.problem === "rectangular_plate";
@@ -28,9 +28,15 @@ if (modal) {
     get("scale-label").textContent = "Relative amplitude (×)";
     get("deformed-key").textContent = "Mode shape";
     scene.frequencies_hz.forEach((frequency, index) => {
-        modeSelect.add(new Option("Mode " + (index + 1) + " (" + frequency.toPrecision(6) + " Hz)",
-            String(index)));
+        const descriptor = index < scene.rigid_mode_count ? "rigid-body mode" : frequency.toPrecision(6) + " Hz";
+        modeSelect.add(new Option("Mode " + (index + 1) + " (" + descriptor + ")", String(index)));
     });
+    if (!solved) {
+        modeSelect.add(new Option("No saved modes", ""));
+        modeSelect.disabled = true;
+        play.disabled = true;
+        get("mode-info").textContent = "This artifact has no saved mode shapes.";
+    }
 }
 if (!solved) {
     fieldSelect.add(new Option("Unavailable", ""));
@@ -39,7 +45,7 @@ if (!solved) {
     scaleInput.disabled = true;
     get("deformed-key").hidden = true;
     get("field-values").hidden = true;
-    get("field-info").textContent = "Result fields and deformation are unavailable.";
+    if (!modal) get("field-info").textContent = "Result fields and deformation are unavailable.";
 }
 
 function setRows(id, rows) {
@@ -124,7 +130,8 @@ function selectMode() {
         modeMotion = mode.motion;
         phase = 0;
         animationStart = null;
-        get("mode-info").textContent = scene.frequencies_hz[index] + " Hz · relative residual "
+        const frequencyLabel = index < scene.rigid_mode_count ? "Rigid-body mode · saved frequency " : "";
+        get("mode-info").textContent = frequencyLabel + scene.frequencies_hz[index] + " Hz · relative residual "
             + scene.residuals[index] + " · amplitude 1 is 10% of the mesh span"
             + " · illustrative playback at a fixed period";
     }
