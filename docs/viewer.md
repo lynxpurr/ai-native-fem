@@ -1,4 +1,4 @@
-# View a saved static result
+# View a saved result
 
 Generate an offline report from a static result directory and open the new
 HTML file in a browser. Input paths with spaces need shell quotes.
@@ -34,6 +34,22 @@ requests. Treat the HTML as a copy of the displayed analysis data when sharing i
 unsupported, damaged, or oversized artifacts fail through the standard
 reader before the report is written.
 
-The static viewer supports the saved scalar associations listed above.
-Batch results, modal animation, frequency response, and time histories
-require separate artifact views.
+## View modal results
+
+Use the same command with a schema 1.4 artifact created by
+[save_modal_result](modal.md#artifacts). Select a mode to see its frequency
+in Hz, relative eigenpair residual, and saved mass-normalized coefficients
+at free DOFs. Fixed translations stay at their original coordinates.
+Rotations appear as scalar coefficients.
+
+The amplitude is relative to the mesh. At amplitude 1, the largest nodal
+translation is 10% of the largest world-coordinate span at the animation's
+peak. Playback uses a fixed illustrative period. The physical frequency
+remains visible. The sign of the mode is arbitrary and repeated frequencies
+describe a subspace. Rigid-body modes are labeled individually with their
+saved frequencies in the details. An artifact with an empty mode selection
+opens with the original mesh and the playback controls disabled.
+
+`view` reads an artifact without running the solver. Opening a saved modal
+result works with the base installation. Batch results, frequency response,
+time histories and buckling require separate artifact views.

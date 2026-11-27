@@ -4,15 +4,20 @@ from hashlib import sha256
 from io import BytesIO
 import json
 from pathlib import Path
+import struct
+from zipfile import BadZipFile
+import zlib
 
 import numpy as np
 
+from ..artifacts import _HEADER_LIMIT, _read_arrays, _read_regular, _require_directory
 from ..model import canonical_modal_input_hash, validate_modal_model
 from .modal import ModalResult
+from .system import dof_labels, free_dofs
 
 
 _JSON_LIMIT = 1024 * 1024
-_ARRAY_LIMIT = 64 * 1024 * 1024
+_ARRAY_LIMIT = 1024 * 1024
 _MANIFEST = "manifest.json"
 _ARRAYS = "arrays.npz"
 _FIELDS = ("eigenvalues", "omega_rad_s", "frequencies_hz", "modes", "residuals")
@@ -20,15 +25,6 @@ _FIELDS = ("eigenvalues", "omega_rad_s", "frequencies_hz", "modes", "residuals")
 
 class ModalArtifactError(ValueError):
     """Invalid or incomplete modal artifact."""
-
-
-def _regular(path, limit):
-    if path.is_symlink() or not path.is_file():
-        raise ModalArtifactError("expected a regular file")
-    size = path.stat().st_size
-    if size > limit:
-        raise ModalArtifactError(f"file exceeds {limit} bytes")
-    return path.read_bytes()
 
 
 def _safe_name(name):
@@ -94,7 +90,7 @@ def save_modal_result(result, root, name):
 
 
 def _manifest(directory):
-    data = _regular(directory / _MANIFEST, _JSON_LIMIT)
+    data = _read_regular(directory / _MANIFEST, _JSON_LIMIT)
     try:
         manifest = json.loads(data.decode("utf-8"), parse_constant=lambda value: (_ for _ in ()).throw(
             ValueError(f"non-finite constant {value}")))
@@ -111,54 +107,43 @@ def _manifest(directory):
 
 
 def _arrays(directory, manifest, labels):
-    data = _regular(directory / _ARRAYS, _ARRAY_LIMIT)
+    count = manifest["mode_count"]
+    if type(count) is not int or not 0 <= count <= min(len(labels), 20):
+        raise ModalArtifactError("invalid mode count")
+    layout = {name: ((count,), "mode", "") for name in _FIELDS}
+    layout["modes"] = ((len(labels), count), "dof", "")
+    expected = {name: {"shape": list(shape), "dtype": "float64"}
+                for name, (shape, _, _) in layout.items()}
+    if manifest["arrays"] != expected:
+        raise ModalArtifactError("modal metadata does not match model-derived array shapes")
+
+    data = _read_regular(directory / _ARRAYS, _ARRAY_LIMIT)
     if sha256(data).hexdigest() != manifest["arrays_sha256"]:
         raise ModalArtifactError("array digest does not match the manifest")
-    try:
-        with np.load(BytesIO(data), allow_pickle=False) as archive:
-            if set(archive.files) != set(_FIELDS):
-                raise ModalArtifactError("unexpected modal array set")
-            arrays = {name: np.asarray(archive[name], dtype=float) for name in _FIELDS}
-    except (OSError, ValueError, EOFError) as error:
-        raise ModalArtifactError(f"invalid modal arrays: {error}") from error
-    count = manifest["mode_count"]
-    if not isinstance(count, int) or not 0 <= count <= 20:
-        raise ModalArtifactError("invalid mode count")
-    if arrays["modes"].shape != (len(labels), count):
-        raise ModalArtifactError("mode shape dimensions do not match the DOF labels")
-    for name, array in arrays.items():
-        metadata = manifest["arrays"].get(name)
-        if not isinstance(metadata, dict) or metadata.get("dtype") != "float64":
-            raise ModalArtifactError("missing modal array metadata")
-        if list(array.shape) != metadata.get("shape"):
-            raise ModalArtifactError("modal array shape does not match the manifest")
-        if not np.isfinite(array).all():
-            raise ModalArtifactError("modal arrays must be finite")
-    if any(len(arrays[name]) != count for name in
-           ("eigenvalues", "omega_rad_s", "frequencies_hz", "residuals")):
-        raise ModalArtifactError("modal arrays must share the mode count")
-    return arrays
+    budget = (len(labels) + 4) * count * 8 + len(layout) * (10 + _HEADER_LIMIT)
+    # The published writer used native byte order and preserved Fortran order.
+    arrays, _ = _read_arrays(data, layout, budget, allow_fortran=True, allow_big_endian=True)
+    if any(np.any(arrays[name] < 0) for name in ("frequencies_hz", "omega_rad_s", "residuals")):
+        raise ModalArtifactError("modal frequencies and residuals must be nonnegative")
+    return {name: array.astype(float, copy=False) for name, array in arrays.items()}
 
 
 def load_modal_result(directory):
     """Load and validate a complete modal artifact."""
     directory = Path(directory)
     try:
-        if not directory.is_dir():
-            raise ModalArtifactError("expected an artifact directory")
-        if {entry.name for entry in directory.iterdir()} != {_MANIFEST, _ARRAYS}:
+        _require_directory(directory)
+        if any(entry.name not in {_MANIFEST, _ARRAYS} for entry in directory.iterdir()):
             raise ModalArtifactError("unexpected modal artifact entries")
         manifest = _manifest(directory)
         model = validate_modal_model(manifest["model"])
         if manifest["input_hash"] != canonical_modal_input_hash(model):
             raise ModalArtifactError("input hash does not match the model")
-        labels = manifest["dof_labels"]
-        if (not isinstance(labels, list) or not all(
-                isinstance(label, list) and 2 <= len(label) <= 4
-                and isinstance(label[0], str)
-                and all(isinstance(item, (str, int)) and not isinstance(item, bool)
-                        for item in label[1:]) for label in labels)):
-            raise ModalArtifactError("invalid DOF labels")
+        free, supported = free_dofs(model, model.mesh)
+        full_labels = dof_labels(model.mesh)
+        labels = tuple(full_labels[index] for index in free)
+        if manifest["dof_labels"] != [list(label) for label in labels]:
+            raise ModalArtifactError("DOF label order does not match the free model DOFs")
         arrays = _arrays(directory, manifest, labels)
         versions = manifest["versions"]
         if (not isinstance(versions, dict) or not versions
@@ -171,7 +156,8 @@ def load_modal_result(directory):
             raise ModalArtifactError("invalid diagnostics")
         if not isinstance(manifest["truncated"], bool):
             raise ModalArtifactError("invalid truncation flag")
-        if not isinstance(manifest["rigid_mode_count"], int):
+        if (type(manifest["rigid_mode_count"]) is not int
+                or manifest["rigid_mode_count"] != (0 if supported else 3)):
             raise ModalArtifactError("invalid rigid-mode count")
         return ModalResult(
             model=model,
@@ -179,7 +165,7 @@ def load_modal_result(directory):
             omega_rad_s=arrays["omega_rad_s"],
             frequencies_hz=arrays["frequencies_hz"],
             modes=arrays["modes"],
-            dof_labels=tuple(tuple(label) for label in labels),
+            dof_labels=labels,
             residuals=arrays["residuals"],
             rigid_mode_count=manifest["rigid_mode_count"],
             truncated=manifest["truncated"],
@@ -189,7 +175,8 @@ def load_modal_result(directory):
         )
     except ModalArtifactError:
         raise
-    except (OSError, ValueError, TypeError, KeyError) as error:
+    except (OSError, ValueError, SyntaxError, TypeError, KeyError, RuntimeError, EOFError,
+            BadZipFile, struct.error, zlib.error) as error:
         raise ModalArtifactError(f"invalid modal result artifact: {error}") from error
 
 
