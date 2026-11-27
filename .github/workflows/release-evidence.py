@@ -264,9 +264,7 @@ def install_and_test(asset, source_dir, version, directory, *, mcp, sparse):
         versions = json.loads(subprocess.check_output(
             [*run, "-c", CHECK_INSTALL, version, *optional, "scipy"], cwd=directory,
         ))
-        subprocess.run([*run, "-m", "pytest", "-q", "tests/test_sparse_parity.py",
-                        "tests/test_mesh_io_v1.py::test_me1_optional_sparse_uses_same_native_projection"],
-                       check=True, cwd=directory)
+        subprocess.run([*run, "-m", "pytest", "-q", "tests"], check=True, cwd=directory)
     return versions
 
 
