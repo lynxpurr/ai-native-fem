@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<title>ANF result viewer</title>
+<style>
+:root { color-scheme: light; color: #142438; background: #f2f5f8; font: 16px/1.5 system-ui, sans-serif; }
+body { margin: 0; }
+main { max-width: 72rem; margin: auto; padding: clamp(1rem, 4vw, 3rem); }
+h1, h2, p { margin: 0; }
+h1 { font-size: clamp(1.7rem, 4vw, 2.4rem); letter-spacing: -.04em; }
+h2 { font-size: 1.1rem; }
+header { margin-bottom: 1rem; }
+#model, .description { color: #465970; }
+#status { margin-top: .5rem; font-weight: 600; overflow-wrap: anywhere; }
+[data-warning="true"] { color: #922c10; }
+#diagnostics:empty { display: none; }
+.panel { background: white; border: 1px solid #d5dfe9; border-radius: .65rem; padding: 1rem; margin-bottom: 1rem; }
+.controls { display: flex; flex-wrap: wrap; align-items: end; gap: 1rem 1.5rem; }
+label { display: grid; gap: .25rem; font-weight: 600; }
+input, select { color: inherit; background: white; border: 1px solid #8798aa; border-radius: .3rem; padding: .4rem .5rem; font: inherit; max-width: 100%; }
+input { width: 7rem; }
+canvas { display: block; width: 100%; height: clamp(220px, 50vw, 480px); background: #f8fbfd; border-radius: .4rem; margin: .75rem 0; }
+.legend { display: flex; flex-wrap: wrap; gap: .25rem 1.25rem; font-size: .9rem; }
+.legend span::before { content: ''; display: inline-block; width: .8rem; height: .17rem; margin: 0 .35rem .2rem 0; background: var(--swatch); }
+#range { font-variant-numeric: tabular-nums; }
+#range:not(:empty)::before { content: ''; display: inline-block; width: 3rem; height: .45rem; margin-right: .5rem; border-radius: .2rem; background: linear-gradient(90deg, hsl(220 78% 43%), hsl(115 78% 43%), hsl(15 78% 43%)); }
+.description { margin-top: .65rem; overflow-wrap: anywhere; }
+details + details { margin-top: .75rem; }
+summary { cursor: pointer; font-weight: 600; }
+.table-wrap { overflow: auto; max-height: 26rem; }
+table { width: 100%; text-align: left; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { padding: .4rem .6rem; border-bottom: 1px solid #e2e9f0; overflow-wrap: anywhere; }
+th { position: sticky; top: 0; background: #f2f5f8; }
+dt { font-weight: 600; }
+dd { margin: 0 0 .4rem; overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>ANF result viewer</h1>
+    <p id="model"></p>
+    <p id="status"></p>
+    <ul id="diagnostics"></ul>
+  </header>
+  <section class="panel" aria-labelledby="mesh-title">
+    <div class="controls">
+      <h2 id="mesh-title">Result mesh</h2>
+      <label>Scalar field <select id="field"></select></label>
+      <label>Deformation scale (×) <input id="scale" type="number" min="0" max="1000" step="any" value="1"></label>
+    </div>
+    <p class="description" id="geometry"></p>
+    <p class="description" id="field-info"></p>
+    <canvas id="mesh" role="img" aria-label="Finite element mesh and result samples. Numeric values are in the tables below."></canvas>
+    <div class="legend">
+      <span style="--swatch:#8494a8">Original mesh</span>
+      <span id="deformed-key" style="--swatch:#173e69">Deformed mesh</span>
+      <span style="--swatch:#0a715d">Support</span>
+      <span style="--swatch:#b84613">Applied load</span>
+    </div>
+    <p class="description" id="range"></p>
+  </section>
+  <section class="panel" aria-label="Result data">
+    <details id="field-values" open>
+      <summary>Field samples</summary>
+      <div class="table-wrap"><table aria-label="Field samples">
+        <thead><tr><th>Location</th><th id="field-unit">Value</th></tr></thead>
+        <tbody id="values"></tbody>
+      </table></div>
+    </details>
+    <details>
+      <summary>Applied loads</summary>
+      <div class="table-wrap"><table aria-label="Applied loads">
+        <thead><tr><th>Location</th><th>Component</th><th>Unit</th><th>Value</th></tr></thead>
+        <tbody id="loads"></tbody>
+      </table></div>
+    </details>
+    <details>
+      <summary>Supports</summary>
+      <div class="table-wrap"><table aria-label="Supports">
+        <thead><tr><th>Node</th><th>Component</th><th>Unit</th><th>Value</th></tr></thead>
+        <tbody id="supports"></tbody>
+      </table></div>
+    </details>
+    <details><summary>Artifact details</summary><dl id="details"></dl></details>
+  </section>
+</main>
+<!-- REPORT -->
+</body>
+</html>
